@@ -4,11 +4,14 @@
 
 | Step | Status | Details |
 |---|---|---|
-| Database migrations (`db/migrations/001-009`) | Done | 9 SQL files created |
+| Database migrations (`db/migrations/001-012`) | Done | 12 SQL files created |
 | Migration runner (`db/migrate.sh`) | Done | Bash script with schema_migrations tracking |
 | `db/.env.example` | Done | Template for DATABASE_URL |
-| Cloudflare Worker entry (`api/src/index.js`) | Done | fetch + scheduled handlers |
-| Router (`api/src/router.js`) | Done | Path matching with :param support |
+| Cloudflare Worker entry (`api/src/index.js`) | Done | fetch + scheduled handlers, passes `env` to router |
+| Router (`api/src/router.js`) | Done | Path matching with :param support, JWT auth middleware |
+| Auth handler (`api/src/handlers/auth.js`) | Done | register, verify-registration, login, verify-login (OTP-based) |
+| JWT helper (`api/src/helpers/jwt.js`) | Done | signJwt, verifyJwt using Web Crypto API (HMAC-SHA256) |
+| Users handler (`api/src/handlers/users.js`) | Done | GET users (registration moved to auth handler) |
 | Rates handler (`api/src/handlers/rates.js`) | Done | 5 functions: fetch, recommendations, apply, manual, current |
 | Wallets handler (`api/src/handlers/wallets.js`) | Done | 5 functions: create, list, members, add member, remove member |
 | Transactions handler (`api/src/handlers/transactions.js`) | Done | Add + list with wallet scope and created_by tracking |
@@ -31,7 +34,7 @@
 
 ### Core Concepts
 
-- **Users** — People who use the system. Each user has a name/email.
+- **Users** — People who use the system. Each user has a name, email, username, and verified status.
 - **Wallets** — A wallet groups transactions together. A wallet can have **multiple users** (shared wallet). Each user-wallet link has a **role** (owner, editor, viewer).
 - **Transactions** — Every transaction belongs to a wallet and records **which user created it** (`created_by_user_id`).
 
@@ -51,7 +54,10 @@ mine26-my-wallet/
 │   │   ├── 006_create_wallets.sql
 │   │   ├── 007_create_wallet_users.sql
 │   │   ├── 008_create_transactions.sql
-│   │   └── 009_seed_data.sql
+│   │   ├── 009_seed_data.sql
+│   │   ├── 010_add_username_to_users.sql
+│   │   ├── 011_create_otp_table.sql
+│   │   └── 012_add_verified_to_users.sql
 │   ├── migrate.sh                   # Migration runner script
 │   ├── .env.example                 # DATABASE_URL template
 │   └── README.md
@@ -59,8 +65,12 @@ mine26-my-wallet/
 ├── api/                             # Cloudflare Worker (independent deploy)
 │   ├── src/
 │   │   ├── index.js                 # Worker entry point (fetch + scheduled)
-│   │   ├── router.js                # Route matching logic
+│   │   ├── router.js                # Route matching + JWT auth middleware
+│   │   ├── helpers/
+│   │   │   └── jwt.js               # signJwt, verifyJwt (Web Crypto API)
 │   │   └── handlers/
+│   │       ├── auth.js              # Register, verify-registration, login, verify-login
+│   │       ├── users.js             # GET users (read-only)
 │   │       ├── rates.js             # Rate fetch, recommendations, apply, manual
 │   │       ├── wallets.js           # Create wallet, manage members, list wallets
 │   │       ├── transactions.js      # Add transaction (wallet-scoped, with created_by)
@@ -104,7 +114,8 @@ users 1──M wallet_users M──1 wallets
 | `exchange_rates` | Historical exchange rates (manual + applied recommendations) |
 | `exchange_rate_recommendations` | Auto-fetched rate suggestions pending user approval |
 | `categories` | Spending categories |
-| `users` | User accounts (name, email) |
+| `users` | User accounts (name, email, username, verified) |
+| `otp_codes` | OTP codes for registration and login verification |
 | `wallets` | Wallets that group transactions |
 | `wallet_users` | Many-to-many: which users belong to which wallets + their role |
 | `transactions` | Spending records scoped to a wallet, with `created_by_user_id` |
@@ -112,11 +123,24 @@ users 1──M wallet_users M──1 wallets
 #### Schema SQL
 
 ```sql
--- 005_create_users.sql
+-- 005_create_users.sql + 010 + 012
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(50) UNIQUE,
+    verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 011_create_otp_table.sql
+CREATE TABLE otp_codes (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    purpose VARCHAR(20) NOT NULL,       -- 'register' or 'login'
+    expires_at TIMESTAMPTZ NOT NULL,    -- 5 minutes from creation
+    used BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -181,6 +205,9 @@ CREATE INDEX idx_transactions_created_by ON transactions(created_by_user_id);
 | `007_create_wallet_users.sql` | `wallet_users` join table + indexes |
 | `008_create_transactions.sql` | `transactions` table (with `wallet_id` + `created_by_user_id`) + indexes |
 | `009_seed_data.sql` | Insert currencies, categories, sample users |
+| `010_add_username_to_users.sql` | Add `username` column to `users` |
+| `011_create_otp_table.sql` | `otp_codes` table for OTP verification |
+| `012_add_verified_to_users.sql` | Add `verified` boolean to `users` |
 
 ### Migration Runner — `db/migrate.sh`
 
@@ -231,8 +258,11 @@ Triggers **only** when files inside `db/` change.
 
 | File | Purpose |
 |---|---|
-| `src/index.js` | Worker entry: CORS, error handling, delegates to router. Also exports `scheduled()` for cron. |
-| `src/router.js` | Maps URL path + method to handler functions |
+| `src/index.js` | Worker entry: CORS, error handling, delegates to router, passes `env`. Also exports `scheduled()` for cron. |
+| `src/router.js` | Maps URL path + method to handler functions. Auth routes are public; all other routes require JWT. |
+| `src/helpers/jwt.js` | `signJwt`, `verifyJwt` — HMAC-SHA256 JWT implementation using Web Crypto API (no external deps) |
+| `src/handlers/auth.js` | `handleRegister`, `handleVerifyRegistration`, `handleLogin`, `handleVerifyLogin`, `handleCheckUsername` — OTP-based passwordless auth via ntfy |
+| `src/handlers/users.js` | `handleGetUsers`, `handleGetUser` — read-only user endpoints (protected) |
 | `src/handlers/rates.js` | `handleFetchRates`, `handleGetRecommendations`, `handleApplyRate`, `handleManualRate`, `handleGetCurrentRate` |
 | `src/handlers/wallets.js` | `handleCreateWallet`, `handleGetWallets`, `handleAddWalletMember`, `handleRemoveWalletMember`, `handleGetWalletMembers` |
 | `src/handlers/transactions.js` | `handleAddTransaction` (wallet-scoped, records created_by), `handleGetTransactions` |
@@ -242,7 +272,27 @@ Triggers **only** when files inside `db/` change.
 
 ### API Endpoints
 
-#### Exchange Rates
+#### Authentication (public — no JWT required)
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | `handleRegister` | Register user (name, email, username), sends OTP via ntfy |
+| `POST` | `/api/auth/verify-registration` | `handleVerifyRegistration` | Verify registration OTP, returns JWT |
+| `POST` | `/api/auth/login` | `handleLogin` | Request login OTP (username), sends OTP via ntfy |
+| `POST` | `/api/auth/verify-login` | `handleVerifyLogin` | Verify login OTP, returns JWT |
+| `GET` | `/api/auth/check-username?username=X` | `handleCheckUsername` | Check if a username is available |
+
+**Auth flow:**
+1. **Registration:** `POST /api/auth/register` → OTP sent to `ntfy.sh/my-wallet-{username}` → `POST /api/auth/verify-registration` with OTP → JWT returned
+2. **Login:** `POST /api/auth/login` → OTP sent to `ntfy.sh/my-wallet-{username}` → `POST /api/auth/verify-login` with OTP → JWT returned
+
+**JWT details:**
+- Signed with HMAC-SHA256 via Web Crypto API
+- Secret from Cloudflare Worker secret `JWT_SECRET`
+- Payload: `{ userId, username, iat, exp }` — 7 day expiry
+- Protected routes require `Authorization: Bearer <token>` header
+
+#### Exchange Rates (protected)
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
@@ -252,7 +302,14 @@ Triggers **only** when files inside `db/` change.
 | `POST` | `/api/rates/manual` | `handleManualRate` | Add a manual exchange rate |
 | `POST` | `/api/rates/apply` | `handleApplyRate` | Apply a recommendation as the active rate |
 
-#### Wallets
+#### Users (protected)
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| `GET` | `/api/users` | `handleGetUsers` | List all users |
+| `GET` | `/api/users/:userId` | `handleGetUser` | Get user details with wallets |
+
+#### Wallets (protected)
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
@@ -262,14 +319,14 @@ Triggers **only** when files inside `db/` change.
 | `POST` | `/api/wallets/:id/members` | `handleAddWalletMember` | Add a user to a wallet with a role |
 | `DELETE` | `/api/wallets/:id/members/:userId` | `handleRemoveWalletMember` | Remove a user from a wallet |
 
-#### Transactions (wallet-scoped)
+#### Transactions (protected, wallet-scoped)
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | `POST` | `/api/wallets/:id/transactions` | `handleAddTransaction` | Add transaction to wallet (records `created_by_user_id`) |
 | `GET` | `/api/wallets/:id/transactions` | `handleGetTransactions` | List transactions for a wallet (shows who created each) |
 
-#### Reports (wallet-scoped)
+#### Reports (protected, wallet-scoped)
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
@@ -338,11 +395,12 @@ Enforced in handler code (not DB-level):
 
 ### Cross-Cutting Concerns
 
-- CORS headers on all responses (`Access-Control-Allow-Origin: *`)
+- CORS headers on all responses (`Access-Control-Allow-Origin: *`, `Authorization` in allowed headers)
 - OPTIONS preflight handling
 - Global try/catch with JSON error responses
 - Neon connection initialized per request via `neon(env.DATABASE_URL)`
-- User identification via `userId` in request body/query (no auth layer yet — can add later)
+- JWT-based authentication: auth routes are public, all other routes require `Authorization: Bearer <token>`
+- OTP delivery via [ntfy.sh](https://ntfy.sh) push notifications to topic `my-wallet-{username}`
 
 ### Scheduled Handler
 
@@ -355,6 +413,7 @@ Enforced in handler code (not DB-level):
 cd api
 npm install
 wrangler secret put DATABASE_URL   # paste Neon connection string
+wrangler secret put JWT_SECRET     # paste a random secret (e.g. openssl rand -hex 32)
 wrangler deploy
 ```
 
@@ -429,7 +488,7 @@ Optional convenience scripts in the root `package.json`:
 | Component | Folder | Trigger | Command | Secrets Needed |
 |---|---|---|---|---|
 | Database | `db/` | Changes to `db/**` | `./migrate.sh` | `NEON_DATABASE_URL` |
-| API Worker | `api/` | Changes to `api/**` | `wrangler deploy` | `CLOUDFLARE_API_TOKEN`, `DATABASE_URL` (wrangler secret) |
+| API Worker | `api/` | Changes to `api/**` | `wrangler deploy` | `CLOUDFLARE_API_TOKEN`, `DATABASE_URL` (wrangler secret), `JWT_SECRET` (wrangler secret) |
 | Frontend | `src/` | Changes to `src/**` | Existing deploy pipeline | `NEXT_PUBLIC_API_URL` |
 
 Each component deploys independently. A database migration does not redeploy the worker, and a worker change does not re-run migrations.
@@ -450,5 +509,6 @@ Each component deploys independently. A database migration does not redeploy the
 | Service | Usage |
 |---|---|
 | [exchangerate-api.com](https://api.exchangerate-api.com/v4/latest/USD) | Free exchange rate data source |
+| [ntfy.sh](https://ntfy.sh) | Push notification service for OTP delivery (topic: `my-wallet-{username}`) |
 | Neon | Serverless Postgres database |
 | Cloudflare Workers | Edge compute runtime + cron triggers |

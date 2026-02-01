@@ -10,6 +10,6 @@
     "@neondatabase/serverless": "^0.9.0"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.61.1"
   }
 }

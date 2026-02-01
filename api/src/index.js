@@ -5,7 +5,7 @@ import { handleFetchRates } from './handlers/rates.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 function jsonResponse(data, status = 200) {
@@ -25,7 +25,7 @@ export default {
       const sql = neon(env.DATABASE_URL);
       const url = new URL(request.url);
 
-      const result = await handleRoute(sql, request.method, url, request);
+      const result = await handleRoute(sql, request.method, url, request, env);
 
       if (result) {
         return jsonResponse(result.body, result.status || 200);
