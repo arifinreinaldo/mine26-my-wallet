@@ -1,0 +1,406 @@
+{
+	"info": {
+		"name": "My Wallet API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Spending Tracker API — Neon + Cloudflare Workers"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8787",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "walletId",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "1",
+			"description": "Used by wallet endpoints",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Check Username Availability",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/check-username?username=johndoe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "check-username"],
+							"query": [
+								{ "key": "username", "value": "johndoe" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Register",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "register"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"username\": \"johndoe\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Verify Registration",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"var json = pm.response.json();",
+									"if (json.token) {",
+									"    pm.collectionVariables.set('token', json.token);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-registration",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "verify-registration"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"johndoe\",\n  \"otp\": \"123456\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "login"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"johndoe\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Verify Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"var json = pm.response.json();",
+									"if (json.token) {",
+									"    pm.collectionVariables.set('token', json.token);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "verify-login"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"johndoe\",\n  \"otp\": \"123456\"\n}"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Get My Profile",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "me"]
+						}
+					}
+				},
+				{
+					"name": "Search User by Username",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/users/search?username=johndoe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "search"],
+							"query": [
+								{ "key": "username", "value": "johndoe" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Exchange Rates",
+			"item": [
+				{
+					"name": "Fetch Rates",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/rates/fetch",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rates", "fetch"]
+						}
+					}
+				},
+				{
+					"name": "Get Recommendations",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/rates/recommendations",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rates", "recommendations"]
+						}
+					}
+				},
+				{
+					"name": "Get Current Rate",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/rates/current?from=USD&to=SGD",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rates", "current"],
+							"query": [
+								{ "key": "from", "value": "USD" },
+								{ "key": "to", "value": "SGD" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Add Manual Rate",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/rates/manual",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rates", "manual"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"SGD\",\n  \"rate\": 1.35\n}"
+						}
+					}
+				},
+				{
+					"name": "Apply Rate Recommendation",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/rates/apply",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "rates", "apply"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recommendationId\": 1\n}"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Wallets",
+			"item": [
+				{
+					"name": "Create Wallet",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Personal Wallet\",\n  \"description\": \"My daily expenses\",\n  \"defaultCurrencyCode\": \"SGD\",\n  \"userId\": 1\n}"
+						}
+					}
+				},
+				{
+					"name": "Get Wallets",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets?userId={{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets"],
+							"query": [
+								{ "key": "userId", "value": "{{userId}}" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Wallet Members",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/members",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "members"]
+						}
+					}
+				},
+				{
+					"name": "Add Wallet Member",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/members",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "members"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": 2,\n  \"role\": \"editor\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Remove Wallet Member",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/members/2",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "members", "2"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Transactions",
+			"item": [
+				{
+					"name": "Add Transaction",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "transactions"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"2025-02-01\",\n  \"description\": \"Team lunch\",\n  \"amount\": 45.00,\n  \"currencyCode\": \"SGD\",\n  \"categoryId\": 1,\n  \"paymentMethod\": \"Credit Card\",\n  \"userId\": 1\n}"
+						}
+					}
+				},
+				{
+					"name": "Get Transactions",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "transactions"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Reports",
+			"item": [
+				{
+					"name": "Get Spending Report",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "reports", "spending"],
+							"query": [
+								{ "key": "currency", "value": "SGD" },
+								{ "key": "from", "value": "2025-01-01" },
+								{ "key": "to", "value": "2025-12-31" }
+							]
+						}
+					}
+				}
+			]
+		}
+	]
+}

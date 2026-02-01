@@ -1,38 +1,7 @@
 /**
- * Get all users
+ * Get current authenticated user's profile with their wallets
  */
-export async function handleGetUsers(sql) {
-  const users = await sql`
-    SELECT
-      u.id,
-      u.name,
-      u.email,
-      u.username,
-      u.created_at,
-      (SELECT COUNT(*) FROM wallet_users WHERE user_id = u.id) AS wallet_count
-    FROM users u
-    ORDER BY u.created_at DESC
-  `;
-
-  return {
-    body: {
-      success: true,
-      users: users.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        username: u.username,
-        walletCount: parseInt(u.wallet_count),
-        createdAt: u.created_at,
-      })),
-    },
-  };
-}
-
-/**
- * Get a single user by ID, including their wallets
- */
-export async function handleGetUser(sql, userId) {
+export async function handleGetMe(sql, userId) {
   const [user] = await sql`
     SELECT id, name, email, username, created_at
     FROM users WHERE id = ${userId}
@@ -74,6 +43,42 @@ export async function handleGetUser(sql, userId) {
           role: w.role,
           joinedAt: w.joined_at,
         })),
+      },
+    },
+  };
+}
+
+/**
+ * Search for a user by username (for adding wallet members)
+ */
+export async function handleSearchUser(sql, username) {
+  if (!username) {
+    return {
+      status: 400,
+      body: { success: false, message: 'username query parameter is required' },
+    };
+  }
+
+  const [user] = await sql`
+    SELECT id, name, username
+    FROM users
+    WHERE username = ${username} AND verified = true
+  `;
+
+  if (!user) {
+    return {
+      status: 404,
+      body: { success: false, message: 'User not found' },
+    };
+  }
+
+  return {
+    body: {
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
       },
     },
   };

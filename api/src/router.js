@@ -7,8 +7,8 @@ import {
 } from './handlers/rates.js';
 
 import {
-  handleGetUsers,
-  handleGetUser,
+  handleGetMe,
+  handleSearchUser,
 } from './handlers/users.js';
 
 import {
@@ -76,8 +76,8 @@ const protectedRoutes = [
   { method: 'POST', path: '/api/rates/apply', handler: (sql, _p, _u, body) => handleApplyRate(sql, body) },
 
   // Users
-  { method: 'GET', path: '/api/users', handler: (sql) => handleGetUsers(sql) },
-  { method: 'GET', path: '/api/users/:userId', handler: (sql, params) => handleGetUser(sql, params.userId) },
+  { method: 'GET', path: '/api/users/me', handler: (sql, _p, _u, _b, _e, user) => handleGetMe(sql, user.userId) },
+  { method: 'GET', path: '/api/users/search', handler: (sql, _p, url) => handleSearchUser(sql, url.searchParams.get('username')) },
 
   // Wallets
   { method: 'POST', path: '/api/wallets', handler: (sql, _p, _u, body) => handleCreateWallet(sql, body) },
@@ -132,7 +132,7 @@ export async function handleRoute(sql, method, url, request, env) {
     if (method === 'POST' || method === 'PUT') {
       body = await request.json().catch(() => ({}));
     }
-    return await route.handler(sql, params, url, body, env);
+    return await route.handler(sql, params, url, body, env, payload);
   }
 
   return null;
