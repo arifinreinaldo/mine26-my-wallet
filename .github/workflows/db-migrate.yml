@@ -1,0 +1,19 @@
+name: DB Migrate
+on:
+  push:
+    paths:
+      - 'db/**'
+    branches: [main]
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          cd db
+          chmod +x migrate.sh
+          ./migrate.sh

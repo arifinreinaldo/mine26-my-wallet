@@ -1,0 +1,10 @@
+{
+  "name": "mine26-my-wallet",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "db:migrate": "cd db && ./migrate.sh",
+    "api:dev": "cd api && npm run dev",
+    "api:deploy": "cd api && npm run deploy"
+  }
+}
