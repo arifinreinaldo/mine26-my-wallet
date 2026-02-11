@@ -47,29 +47,51 @@ export async function handleRegister(sql, body) {
     };
   }
 
+  // Check if email is taken by a verified user
   const [existingEmail] = await sql`
-    SELECT id FROM users WHERE email = ${email}
+    SELECT id, verified FROM users WHERE email = ${email}
   `;
-  if (existingEmail) {
+  if (existingEmail && existingEmail.verified) {
     return {
       status: 409,
       body: { success: false, message: 'A user with this email already exists' },
     };
   }
 
+  // Check if username is taken by a verified user
   const [existingUsername] = await sql`
-    SELECT id FROM users WHERE username = ${username}
+    SELECT id, verified FROM users WHERE username = ${username}
   `;
-  if (existingUsername) {
+  if (existingUsername && existingUsername.verified) {
     return {
       status: 409,
       body: { success: false, message: 'This username is already taken' },
     };
   }
 
+  // If an unverified user exists with this username, update their info and resend OTP
+  if (existingUsername && !existingUsername.verified) {
+    await sql`
+      UPDATE users SET name = ${name}, email = ${email}
+      WHERE id = ${existingUsername.id}
+    `;
+  } else if (existingEmail && !existingEmail.verified) {
+    // Unverified user exists with this email, update their info
+    await sql`
+      UPDATE users SET name = ${name}, username = ${username}
+      WHERE id = ${existingEmail.id}
+    `;
+  } else {
+    await sql`
+      INSERT INTO users (name, email, username, verified)
+      VALUES (${name}, ${email}, ${username}, false)
+    `;
+  }
+
+  // Invalidate any previous unused registration OTPs for this username
   await sql`
-    INSERT INTO users (name, email, username, verified)
-    VALUES (${name}, ${email}, ${username}, false)
+    UPDATE otp_codes SET used = true
+    WHERE username = ${username} AND purpose = 'register' AND used = false
   `;
 
   const otp = generateOtp();
