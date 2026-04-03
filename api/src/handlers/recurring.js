@@ -6,13 +6,31 @@ const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
  * Calculate the next due date given a frequency and current date.
  */
 function calculateNextDueDate(currentDate, frequency) {
-  const d = new Date(currentDate);
+  const d = new Date(currentDate + 'T00:00:00Z');
+  const origDay = d.getUTCDate();
+
   switch (frequency) {
-    case 'daily': d.setDate(d.getDate() + 1); break;
-    case 'weekly': d.setDate(d.getDate() + 7); break;
-    case 'biweekly': d.setDate(d.getDate() + 14); break;
-    case 'monthly': d.setMonth(d.getMonth() + 1); break;
-    case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
+    case 'daily': d.setUTCDate(origDay + 1); break;
+    case 'weekly': d.setUTCDate(origDay + 7); break;
+    case 'biweekly': d.setUTCDate(origDay + 14); break;
+    case 'monthly': {
+      // Advance month, then clamp day to end-of-month if overflow occurred
+      // e.g. Jan 31 → setMonth(1) → Mar 3 → clamp to Feb 28
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      if (d.getUTCDate() !== origDay) {
+        // Overflow: go back to last day of previous month
+        d.setUTCDate(0);
+      }
+      break;
+    }
+    case 'yearly': {
+      d.setUTCFullYear(d.getUTCFullYear() + 1);
+      // Handle Feb 29 → Feb 28 in non-leap years
+      if (d.getUTCDate() !== origDay) {
+        d.setUTCDate(0);
+      }
+      break;
+    }
   }
   return d.toISOString().split('T')[0];
 }

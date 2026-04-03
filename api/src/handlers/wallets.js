@@ -73,15 +73,12 @@ export async function handleGetWallets(sql, authUserId) {
       w.name,
       w.description,
       w.starting_balance,
+      w.default_currency_id,
       c.code AS default_currency,
       wu.role AS my_role,
       w.created_at,
       u.name AS created_by_name,
-      (SELECT COUNT(*) FROM wallet_users WHERE wallet_id = w.id) AS member_count,
-      COALESCE((
-        SELECT SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END)
-        FROM transactions t WHERE t.wallet_id = w.id
-      ), 0) AS transaction_net
+      (SELECT COUNT(*) FROM wallet_users WHERE wallet_id = w.id) AS member_count
     FROM wallets w
     JOIN wallet_users wu ON wu.wallet_id = w.id AND wu.user_id = ${authUserId}
     LEFT JOIN currencies c ON w.default_currency_id = c.id
@@ -89,23 +86,72 @@ export async function handleGetWallets(sql, authUserId) {
     ORDER BY w.created_at DESC
   `;
 
+  // Compute balance per wallet, converting cross-currency transactions
+  const results = await Promise.all(wallets.map(async (w) => {
+    let transactionNet = 0;
+
+    if (w.default_currency_id) {
+      // Get all transactions grouped by currency
+      const txByCurrency = await sql`
+        SELECT
+          t.currency_id,
+          SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END) AS net
+        FROM transactions t
+        WHERE t.wallet_id = ${w.id}
+        GROUP BY t.currency_id
+      `;
+
+      for (const row of txByCurrency) {
+        const net = parseFloat(row.net);
+        if (row.currency_id === w.default_currency_id) {
+          transactionNet += net;
+        } else {
+          // Convert to wallet's default currency using latest rate
+          const rate = await getLatestRate(sql, row.currency_id, w.default_currency_id);
+          transactionNet += rate ? net * rate : net;
+        }
+      }
+    }
+
+    return {
+      id: w.id,
+      name: w.name,
+      description: w.description,
+      defaultCurrency: w.default_currency,
+      startingBalance: parseFloat(w.starting_balance),
+      currentBalance: parseFloat(w.starting_balance) + transactionNet,
+      myRole: w.my_role,
+      createdByName: w.created_by_name,
+      memberCount: parseInt(w.member_count),
+      createdAt: w.created_at,
+    };
+  }));
+
   return {
-    body: {
-      success: true,
-      wallets: wallets.map((w) => ({
-        id: w.id,
-        name: w.name,
-        description: w.description,
-        defaultCurrency: w.default_currency,
-        startingBalance: parseFloat(w.starting_balance),
-        currentBalance: parseFloat(w.starting_balance) + parseFloat(w.transaction_net),
-        myRole: w.my_role,
-        createdByName: w.created_by_name,
-        memberCount: parseInt(w.member_count),
-        createdAt: w.created_at,
-      })),
-    },
+    body: { success: true, wallets: results },
   };
+}
+
+/**
+ * Get the latest exchange rate between two currencies.
+ * Falls back to inverse rate if direct not found.
+ */
+async function getLatestRate(sql, fromCurrencyId, toCurrencyId) {
+  if (fromCurrencyId === toCurrencyId) return 1.0;
+
+  const [rate] = await sql`
+    SELECT rate FROM exchange_rates
+    WHERE from_currency_id = ${fromCurrencyId} AND to_currency_id = ${toCurrencyId}
+    ORDER BY effective_date DESC LIMIT 1
+  `;
+  if (rate) return parseFloat(rate.rate);
+
+  const [inverse] = await sql`
+    SELECT rate FROM exchange_rates
+    WHERE from_currency_id = ${toCurrencyId} AND to_currency_id = ${fromCurrencyId}
+    ORDER BY effective_date DESC LIMIT 1
+  `;
+  return inverse ? 1.0 / parseFloat(inverse.rate) : null;
 }
 
 /**
@@ -131,12 +177,17 @@ export async function handleEditWallet(sql, walletId, body, authUserId) {
     defaultCurrencyId = curr.id;
   }
 
+  const hasName = 'name' in body;
+  const hasDesc = 'description' in body;
+  const hasCurrency = defaultCurrencyId !== undefined;
+  const hasBalance = typeof startingBalance === 'number';
+
   const [updated] = await sql`
     UPDATE wallets SET
-      name = COALESCE(${name || null}, name),
-      description = COALESCE(${description !== undefined ? description : null}, description),
-      default_currency_id = COALESCE(${defaultCurrencyId || null}, default_currency_id),
-      starting_balance = COALESCE(${typeof startingBalance === 'number' ? startingBalance : null}, starting_balance)
+      name = CASE WHEN ${hasName} THEN ${name} ELSE name END,
+      description = CASE WHEN ${hasDesc} THEN ${description} ELSE description END,
+      default_currency_id = CASE WHEN ${hasCurrency} THEN ${defaultCurrencyId} ELSE default_currency_id END,
+      starting_balance = CASE WHEN ${hasBalance} THEN ${startingBalance} ELSE starting_balance END
     WHERE id = ${walletId}
     RETURNING id, name
   `;

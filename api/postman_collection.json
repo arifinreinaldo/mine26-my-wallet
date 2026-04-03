@@ -21,9 +21,18 @@
 			"type": "string"
 		},
 		{
-			"key": "userId",
+			"key": "transactionId",
 			"value": "1",
-			"description": "Used by wallet endpoints",
+			"type": "string"
+		},
+		{
+			"key": "categoryId",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "recurringId",
+			"value": "1",
 			"type": "string"
 		}
 	],
@@ -246,7 +255,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"SGD\",\n  \"rate\": 1.35\n}"
+							"raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"SGD\",\n  \"rate\": 1.35,\n  \"notes\": \"Bank rate\"\n}"
 						}
 					}
 				},
@@ -264,7 +273,73 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"recommendationId\": 1\n}"
+							"raw": "{\n  \"recommendationId\": 1,\n  \"notes\": \"Accepted daily rate\"\n}"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Categories",
+			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/categories?walletId={{walletId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories"],
+							"query": [
+								{ "key": "walletId", "value": "{{walletId}}", "description": "Optional — omit for global categories only" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Create Custom Category",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/categories",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Groceries\",\n  \"icon\": \"cart\",\n  \"color\": \"#4CAF50\",\n  \"walletId\": 1\n}"
+						}
+					}
+				},
+				{
+					"name": "Edit Category",
+					"request": {
+						"method": "PUT",
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories", "{{categoryId}}"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Groceries & Supermarket\",\n  \"icon\": \"shopping-cart\",\n  \"color\": \"#388E3C\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "categories", "{{categoryId}}"]
 						}
 					}
 				}
@@ -287,21 +362,47 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Personal Wallet\",\n  \"description\": \"My daily expenses\",\n  \"defaultCurrencyCode\": \"SGD\",\n  \"userId\": 1\n}"
+							"raw": "{\n  \"name\": \"Personal Wallet\",\n  \"description\": \"My daily expenses\",\n  \"defaultCurrencyCode\": \"SGD\",\n  \"startingBalance\": 1000.00\n}"
 						}
 					}
 				},
 				{
-					"name": "Get Wallets",
+					"name": "List Wallets",
 					"request": {
 						"method": "GET",
 						"url": {
-							"raw": "{{baseUrl}}/api/wallets?userId={{userId}}",
+							"raw": "{{baseUrl}}/api/wallets",
 							"host": ["{{baseUrl}}"],
-							"path": ["api", "wallets"],
-							"query": [
-								{ "key": "userId", "value": "{{userId}}" }
-							]
+							"path": ["api", "wallets"]
+						}
+					}
+				},
+				{
+					"name": "Edit Wallet",
+					"request": {
+						"method": "PUT",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Wallet Name\",\n  \"description\": \"Updated description\",\n  \"startingBalance\": 2000.00\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete Wallet",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}"]
 						}
 					}
 				},
@@ -364,18 +465,99 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"date\": \"2025-02-01\",\n  \"description\": \"Team lunch\",\n  \"amount\": 45.00,\n  \"currencyCode\": \"SGD\",\n  \"categoryId\": 1,\n  \"paymentMethod\": \"Credit Card\",\n  \"userId\": 1\n}"
+							"raw": "{\n  \"date\": \"2025-02-01\",\n  \"description\": \"Team lunch\",\n  \"amount\": 45.00,\n  \"type\": \"expense\",\n  \"currencyCode\": \"SGD\",\n  \"categoryId\": 1,\n  \"paymentMethod\": \"Credit Card\"\n}"
 						}
 					}
 				},
 				{
-					"name": "Get Transactions",
+					"name": "Edit Transaction",
+					"request": {
+						"method": "PUT",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions/{{transactionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "transactions", "{{transactionId}}"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Updated description\",\n  \"amount\": 50.00,\n  \"type\": \"expense\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete Transaction",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions/{{transactionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "transactions", "{{transactionId}}"]
+						}
+					}
+				},
+				{
+					"name": "List Transactions",
 					"request": {
 						"method": "GET",
 						"url": {
 							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions",
 							"host": ["{{baseUrl}}"],
-							"path": ["api", "wallets", "{{walletId}}", "transactions"]
+							"path": ["api", "wallets", "{{walletId}}", "transactions"],
+							"query": [
+								{ "key": "from", "value": "2025-01-01", "disabled": true },
+								{ "key": "to", "value": "2025-12-31", "disabled": true },
+								{ "key": "createdBy", "value": "1", "disabled": true },
+								{ "key": "categoryId", "value": "1", "disabled": true },
+								{ "key": "type", "value": "expense", "disabled": true }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Recurring Transactions",
+			"item": [
+				{
+					"name": "Create Recurring Transaction",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/recurring",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "recurring"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Monthly rent\",\n  \"amount\": 2000.00,\n  \"type\": \"expense\",\n  \"currencyCode\": \"SGD\",\n  \"categoryId\": 5,\n  \"paymentMethod\": \"Bank Transfer\",\n  \"frequency\": \"monthly\",\n  \"startDate\": \"2025-03-01\"\n}"
+						}
+					}
+				},
+				{
+					"name": "List Recurring Transactions",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/recurring",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "recurring"]
+						}
+					}
+				},
+				{
+					"name": "Deactivate Recurring Transaction",
+					"request": {
+						"method": "DELETE",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/recurring/{{recurringId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "recurring", "{{recurringId}}"]
 						}
 					}
 				}
@@ -396,6 +578,26 @@
 								{ "key": "currency", "value": "SGD" },
 								{ "key": "from", "value": "2025-01-01" },
 								{ "key": "to", "value": "2025-12-31" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Export",
+			"item": [
+				{
+					"name": "Export Transactions CSV",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/export/csv?from=2025-01-01&to=2025-12-31",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "export", "csv"],
+							"query": [
+								{ "key": "from", "value": "2025-01-01", "disabled": true },
+								{ "key": "to", "value": "2025-12-31", "disabled": true }
 							]
 						}
 					}

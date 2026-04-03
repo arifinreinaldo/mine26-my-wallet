@@ -104,12 +104,15 @@ export async function handleEditCategory(sql, categoryId, body, authUserId) {
   }
 
   const { name, icon, color } = body;
+  const hasName = 'name' in body;
+  const hasIcon = 'icon' in body;
+  const hasColor = 'color' in body;
 
   const [updated] = await sql`
     UPDATE categories SET
-      name = COALESCE(${name || null}, name),
-      icon = COALESCE(${icon !== undefined ? icon : null}, icon),
-      color = COALESCE(${color !== undefined ? color : null}, color)
+      name = CASE WHEN ${hasName} THEN ${name} ELSE name END,
+      icon = CASE WHEN ${hasIcon} THEN ${icon} ELSE icon END,
+      color = CASE WHEN ${hasColor} THEN ${color} ELSE color END
     WHERE id = ${categoryId}
     RETURNING id, name, icon, color
   `;

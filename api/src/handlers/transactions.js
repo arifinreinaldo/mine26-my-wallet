@@ -121,16 +121,26 @@ export async function handleEditTransaction(sql, walletId, transactionId, body, 
 
   const txType = type === 'income' ? 'income' : type === 'expense' ? 'expense' : undefined;
 
+  // Build update — only update fields that were explicitly provided
+  const hasDate = 'date' in body;
+  const hasDesc = 'description' in body;
+  const hasAmount = 'amount' in body;
+  const hasType = txType !== undefined;
+  const hasCurrency = currencyId !== undefined;
+  const hasCategoryId = 'categoryId' in body;
+  const hasPayment = 'paymentMethod' in body;
+  const hasNotes = 'notes' in body;
+
   const [updated] = await sql`
     UPDATE transactions SET
-      date = COALESCE(${date || null}, date),
-      description = COALESCE(${description !== undefined ? description : null}, description),
-      amount = COALESCE(${amount || null}, amount),
-      type = COALESCE(${txType || null}, type),
-      currency_id = COALESCE(${currencyId || null}, currency_id),
-      category_id = COALESCE(${categoryId || null}, category_id),
-      payment_method = COALESCE(${paymentMethod !== undefined ? paymentMethod : null}, payment_method),
-      notes = COALESCE(${notes !== undefined ? notes : null}, notes)
+      date = CASE WHEN ${hasDate} THEN ${date}::date ELSE date END,
+      description = CASE WHEN ${hasDesc} THEN ${description} ELSE description END,
+      amount = CASE WHEN ${hasAmount} THEN ${amount} ELSE amount END,
+      type = CASE WHEN ${hasType} THEN ${txType} ELSE type END,
+      currency_id = CASE WHEN ${hasCurrency} THEN ${currencyId} ELSE currency_id END,
+      category_id = CASE WHEN ${hasCategoryId} THEN ${categoryId} ELSE category_id END,
+      payment_method = CASE WHEN ${hasPayment} THEN ${paymentMethod} ELSE payment_method END,
+      notes = CASE WHEN ${hasNotes} THEN ${notes} ELSE notes END
     WHERE id = ${transactionId} AND wallet_id = ${walletId}
     RETURNING id
   `;
