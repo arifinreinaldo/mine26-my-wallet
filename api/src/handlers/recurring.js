@@ -237,7 +237,6 @@ export async function processRecurringTransactions(sql) {
       ) u WHERE rt.id = u.id
     `;
   }
-  }
 
   return processed;
 }

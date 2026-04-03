@@ -21,7 +21,6 @@ async function sendOtpViaNtfy(username, otp) {
 }
 
 const MAX_OTP_ATTEMPTS = 5;
-const OTP_LOCKOUT_MINUTES = 15;
 
 /**
  * Check recent failed OTP attempts for a username.
