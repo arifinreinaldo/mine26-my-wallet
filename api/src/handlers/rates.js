@@ -3,6 +3,12 @@
  */
 export async function handleFetchRates(sql) {
   const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+  if (!response.ok) {
+    return {
+      status: 502,
+      body: { success: false, message: `Failed to fetch rates: ${response.status} ${response.statusText}` },
+    };
+  }
   const data = await response.json();
   const rates = data.rates;
   const source = 'exchangerate-api.com';
@@ -105,6 +111,13 @@ export async function handleGetRecommendations(sql) {
 export async function handleApplyRate(sql, body) {
   const { recommendationId, notes } = body;
 
+  if (!recommendationId) {
+    return {
+      status: 400,
+      body: { success: false, message: 'recommendationId is required' },
+    };
+  }
+
   const [rec] = await sql`
     SELECT * FROM exchange_rate_recommendations
     WHERE id = ${recommendationId} AND is_applied = FALSE
@@ -158,6 +171,13 @@ export async function handleApplyRate(sql, body) {
 export async function handleManualRate(sql, body) {
   const { fromCurrency, toCurrency, rate, notes } = body;
 
+  if (!fromCurrency || !toCurrency || rate == null) {
+    return {
+      status: 400,
+      body: { success: false, message: 'fromCurrency, toCurrency, and rate are required' },
+    };
+  }
+
   const currencies = await sql`
     SELECT id, code FROM currencies
     WHERE code IN (${fromCurrency}, ${toCurrency})
@@ -207,6 +227,13 @@ export async function handleManualRate(sql, body) {
  * Get current rate with recommendation
  */
 export async function handleGetCurrentRate(sql, fromCurrency, toCurrency) {
+  if (!fromCurrency || !toCurrency) {
+    return {
+      status: 400,
+      body: { success: false, message: 'from and to query parameters are required' },
+    };
+  }
+
   const [result] = await sql`
     WITH currency_ids AS (
       SELECT

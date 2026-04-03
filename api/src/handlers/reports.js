@@ -1,7 +1,20 @@
 /**
  * Get spending report for a wallet, converted to target currency
  */
-export async function handleGetSpendingReport(sql, walletId, searchParams) {
+export async function handleGetSpendingReport(sql, walletId, searchParams, authUserId) {
+  // Verify user is a member
+  const [membership] = await sql`
+    SELECT role FROM wallet_users
+    WHERE wallet_id = ${walletId} AND user_id = ${authUserId}
+  `;
+
+  if (!membership) {
+    return {
+      status: 403,
+      body: { success: false, message: 'You are not a member of this wallet' },
+    };
+  }
+
   const targetCurrency = searchParams.get('currency') || 'SGD';
   const fromDate = searchParams.get('from');
   const toDate = searchParams.get('to');

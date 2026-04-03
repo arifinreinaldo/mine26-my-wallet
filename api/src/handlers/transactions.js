@@ -1,26 +1,26 @@
 /**
  * Add a transaction to a wallet
  */
-export async function handleAddTransaction(sql, walletId, body) {
-  const { date, description, amount, currencyCode, categoryId, paymentMethod, notes, userId } = body;
+export async function handleAddTransaction(sql, walletId, body, authUserId) {
+  const { date, description, amount, currencyCode, categoryId, paymentMethod, notes } = body;
 
-  if (!userId) {
+  if (!date || amount == null || !currencyCode) {
     return {
       status: 400,
-      body: { success: false, message: 'userId is required' },
+      body: { success: false, message: 'date, amount, and currencyCode are required' },
     };
   }
 
   // Verify user is a member with editor or owner role
   const [membership] = await sql`
     SELECT role FROM wallet_users
-    WHERE wallet_id = ${walletId} AND user_id = ${userId}
+    WHERE wallet_id = ${walletId} AND user_id = ${authUserId}
   `;
 
   if (!membership) {
     return {
       status: 403,
-      body: { success: false, message: 'User is not a member of this wallet' },
+      body: { success: false, message: 'You are not a member of this wallet' },
     };
   }
 
@@ -47,21 +47,21 @@ export async function handleAddTransaction(sql, walletId, body) {
     INSERT INTO transactions
     (wallet_id, date, description, amount, currency_id, category_id, payment_method, notes, created_by_user_id)
     VALUES (
-      ${walletId}, ${date}, ${description}, ${amount},
+      ${walletId}, ${date}, ${description || null}, ${amount},
       ${currency.id}, ${categoryId || null}, ${paymentMethod || null},
-      ${notes || null}, ${userId}
+      ${notes || null}, ${authUserId}
     )
     RETURNING id, created_at
   `;
 
-  const [user] = await sql`SELECT name FROM users WHERE id = ${userId}`;
+  const [user] = await sql`SELECT name FROM users WHERE id = ${authUserId}`;
 
   return {
     body: {
       success: true,
       transactionId: transaction.id,
       createdBy: {
-        id: parseInt(userId),
+        id: authUserId,
         name: user.name,
       },
       createdAt: transaction.created_at,
@@ -70,9 +70,22 @@ export async function handleAddTransaction(sql, walletId, body) {
 }
 
 /**
- * List transactions for a wallet (shows who created each)
+ * List transactions for a wallet (requires membership)
  */
-export async function handleGetTransactions(sql, walletId, searchParams) {
+export async function handleGetTransactions(sql, walletId, searchParams, authUserId) {
+  // Verify user is a member
+  const [membership] = await sql`
+    SELECT role FROM wallet_users
+    WHERE wallet_id = ${walletId} AND user_id = ${authUserId}
+  `;
+
+  if (!membership) {
+    return {
+      status: 403,
+      body: { success: false, message: 'You are not a member of this wallet' },
+    };
+  }
+
   const fromDate = searchParams.get('from');
   const toDate = searchParams.get('to');
   const createdBy = searchParams.get('createdBy');

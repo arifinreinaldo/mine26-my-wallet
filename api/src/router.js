@@ -80,18 +80,18 @@ const protectedRoutes = [
   { method: 'GET', path: '/api/users/search', handler: (sql, _p, url) => handleSearchUser(sql, url.searchParams.get('username')) },
 
   // Wallets
-  { method: 'POST', path: '/api/wallets', handler: (sql, _p, _u, body) => handleCreateWallet(sql, body) },
-  { method: 'GET', path: '/api/wallets', handler: (sql, _p, url) => handleGetWallets(sql, url.searchParams.get('userId')) },
-  { method: 'GET', path: '/api/wallets/:walletId/members', handler: (sql, params) => handleGetWalletMembers(sql, params.walletId) },
-  { method: 'POST', path: '/api/wallets/:walletId/members', handler: (sql, params, _u, body) => handleAddWalletMember(sql, params.walletId, body) },
-  { method: 'DELETE', path: '/api/wallets/:walletId/members/:userId', handler: (sql, params) => handleRemoveWalletMember(sql, params.walletId, params.userId) },
+  { method: 'POST', path: '/api/wallets', handler: (sql, _p, _u, body, _e, user) => handleCreateWallet(sql, body, user.userId) },
+  { method: 'GET', path: '/api/wallets', handler: (sql, _p, _u, _b, _e, user) => handleGetWallets(sql, user.userId) },
+  { method: 'GET', path: '/api/wallets/:walletId/members', handler: (sql, params, _u, _b, _e, user) => handleGetWalletMembers(sql, params.walletId, user.userId) },
+  { method: 'POST', path: '/api/wallets/:walletId/members', handler: (sql, params, _u, body, _e, user) => handleAddWalletMember(sql, params.walletId, body, user.userId) },
+  { method: 'DELETE', path: '/api/wallets/:walletId/members/:userId', handler: (sql, params, _u, _b, _e, user) => handleRemoveWalletMember(sql, params.walletId, params.userId, user.userId) },
 
   // Transactions (wallet-scoped)
-  { method: 'POST', path: '/api/wallets/:walletId/transactions', handler: (sql, params, _u, body) => handleAddTransaction(sql, params.walletId, body) },
-  { method: 'GET', path: '/api/wallets/:walletId/transactions', handler: (sql, params, url) => handleGetTransactions(sql, params.walletId, url.searchParams) },
+  { method: 'POST', path: '/api/wallets/:walletId/transactions', handler: (sql, params, _u, body, _e, user) => handleAddTransaction(sql, params.walletId, body, user.userId) },
+  { method: 'GET', path: '/api/wallets/:walletId/transactions', handler: (sql, params, url, _b, _e, user) => handleGetTransactions(sql, params.walletId, url.searchParams, user.userId) },
 
   // Reports (wallet-scoped)
-  { method: 'GET', path: '/api/wallets/:walletId/reports/spending', handler: (sql, params, url) => handleGetSpendingReport(sql, params.walletId, url.searchParams) },
+  { method: 'GET', path: '/api/wallets/:walletId/reports/spending', handler: (sql, params, url, _b, _e, user) => handleGetSpendingReport(sql, params.walletId, url.searchParams, user.userId) },
 ];
 
 export async function handleRoute(sql, method, url, request, env) {
