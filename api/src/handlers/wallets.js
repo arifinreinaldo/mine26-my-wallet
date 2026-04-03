@@ -1,13 +1,18 @@
 /**
- * Check if a user is a member of a wallet and return their role.
- * Returns the role string or null if not a member.
+ * Check if a wallet exists and if a user is a member.
+ * Returns { exists, role } where role is null if not a member.
  */
-async function getMemberRole(sql, walletId, userId) {
+export async function checkWalletAccess(sql, walletId, userId) {
+  const [wallet] = await sql`
+    SELECT id FROM wallets WHERE id = ${walletId}
+  `;
+  if (!wallet) return { exists: false, role: null };
+
   const [membership] = await sql`
     SELECT role FROM wallet_users
     WHERE wallet_id = ${walletId} AND user_id = ${userId}
   `;
-  return membership?.role || null;
+  return { exists: true, role: membership?.role || null };
 }
 
 /**
@@ -97,12 +102,12 @@ export async function handleGetWallets(sql, authUserId) {
  * Get all members of a wallet (requires membership)
  */
 export async function handleGetWalletMembers(sql, walletId, authUserId) {
-  const role = await getMemberRole(sql, walletId, authUserId);
-  if (!role) {
-    return {
-      status: 403,
-      body: { success: false, message: 'You are not a member of this wallet' },
-    };
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (!access.role) {
+    return { status: 403, body: { success: false, message: 'You are not a member of this wallet' } };
   }
 
   const members = await sql`
@@ -147,13 +152,14 @@ export async function handleAddWalletMember(sql, walletId, body, authUserId) {
   }
 
   // Check requester has permission to add members
-  const requesterRole = await getMemberRole(sql, walletId, authUserId);
-  if (!requesterRole || requesterRole === 'viewer') {
-    return {
-      status: 403,
-      body: { success: false, message: 'Only owners and editors can add members' },
-    };
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
   }
+  if (!access.role || access.role === 'viewer') {
+    return { status: 403, body: { success: false, message: 'Only owners and editors can add members' } };
+  }
+  const requesterRole = access.role;
 
   const validRoles = ['owner', 'editor', 'viewer'];
   const assignRole = validRoles.includes(role) ? role : 'editor';
@@ -205,12 +211,12 @@ export async function handleAddWalletMember(sql, walletId, body, authUserId) {
  */
 export async function handleRemoveWalletMember(sql, walletId, userId, authUserId) {
   // Check requester is an owner
-  const requesterRole = await getMemberRole(sql, walletId, authUserId);
-  if (requesterRole !== 'owner') {
-    return {
-      status: 403,
-      body: { success: false, message: 'Only owners can remove members' },
-    };
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (access.role !== 'owner') {
+    return { status: 403, body: { success: false, message: 'Only owners can remove members' } };
   }
 
   // Prevent removing the last owner

@@ -83,14 +83,16 @@ These are configured as Cloudflare Worker secrets (not .env files) and GitHub Ac
 - **Custom router** (`router.js`): Path matching with `:param` placeholders, JWT middleware for protected routes
 - **Public routes**: `/api/auth/*` (register, login, OTP verification, username check)
 - **Protected routes**: Everything else requires `Authorization: Bearer <jwt>`
-- **Role-based access**: Wallet members have owner/editor/viewer roles enforced in handlers
+- **Role-based access**: Wallet members have owner/editor/viewer roles enforced in handlers. User identity always comes from JWT, never from request body/params
+- **Wallet authorization**: All wallet-scoped endpoints verify membership via `checkWalletAccess()`. Owners can manage members; editors can add members; viewers are read-only
+- **OTP brute-force protection**: Max 5 attempts per OTP code before lockout
 - **Scheduled trigger**: Daily 08:00 UTC cron fetches exchange rates from exchangerate-api.com
 - **Two-stage rate workflow**: Fetch recommendations, then manually apply/approve
 - **CORS**: Open (`*`) for all origins
 
 ## Database
 
-- **12 migrations** in `db/migrations/` (001-012), applied via `migrate.sh`
+- **13 migrations** in `db/migrations/` (001-013), applied via `migrate.sh`
 - **Core tables**: users, wallets, wallet_users (M2M with roles), transactions, currencies (6 supported: SGD/USD/EUR/MYR/GBP/JPY), categories (8 seeded), exchange_rates, exchange_rate_recommendations, otp_codes
 - **Conventions**: Use `TIMESTAMPTZ`, cascading deletes on foreign keys, indices on frequently queried columns
 - **New migrations**: Create file `db/migrations/NNN_description.sql` following existing numbering

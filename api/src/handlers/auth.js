@@ -20,6 +20,44 @@ async function sendOtpViaNtfy(username, otp) {
   });
 }
 
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_LOCKOUT_MINUTES = 15;
+
+/**
+ * Check recent failed OTP attempts for a username.
+ * Returns true if the user is locked out.
+ */
+async function isOtpLocked(sql, username, purpose) {
+  const [result] = await sql`
+    SELECT COUNT(*) AS count FROM otp_codes
+    WHERE username = ${username}
+      AND purpose = ${purpose}
+      AND used = false
+      AND expires_at > NOW()
+      AND attempts >= ${MAX_OTP_ATTEMPTS}
+  `;
+  return parseInt(result.count) > 0;
+}
+
+/**
+ * Increment the attempt counter on the most recent OTP for a username/purpose.
+ */
+async function incrementOtpAttempts(sql, username, purpose) {
+  await sql`
+    UPDATE otp_codes
+    SET attempts = attempts + 1
+    WHERE id = (
+      SELECT id FROM otp_codes
+      WHERE username = ${username}
+        AND purpose = ${purpose}
+        AND used = false
+        AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+    )
+  `;
+}
+
 export async function handleCheckUsername(sql, username) {
   if (!username) {
     return {
@@ -97,6 +135,14 @@ export async function handleVerifyRegistration(sql, body, env) {
     };
   }
 
+  // Check brute-force lockout
+  if (await isOtpLocked(sql, username, 'register')) {
+    return {
+      status: 429,
+      body: { success: false, message: 'Too many failed attempts. Please request a new OTP.' },
+    };
+  }
+
   const [otpRecord] = await sql`
     SELECT id FROM otp_codes
     WHERE username = ${username}
@@ -104,11 +150,13 @@ export async function handleVerifyRegistration(sql, body, env) {
       AND purpose = 'register'
       AND used = false
       AND expires_at > NOW()
+      AND attempts < ${MAX_OTP_ATTEMPTS}
     ORDER BY created_at DESC
     LIMIT 1
   `;
 
   if (!otpRecord) {
+    await incrementOtpAttempts(sql, username, 'register');
     return {
       status: 400,
       body: { success: false, message: 'Invalid or expired OTP' },
@@ -182,6 +230,14 @@ export async function handleVerifyLogin(sql, body, env) {
     };
   }
 
+  // Check brute-force lockout
+  if (await isOtpLocked(sql, username, 'login')) {
+    return {
+      status: 429,
+      body: { success: false, message: 'Too many failed attempts. Please request a new OTP.' },
+    };
+  }
+
   const [otpRecord] = await sql`
     SELECT id FROM otp_codes
     WHERE username = ${username}
@@ -189,11 +245,13 @@ export async function handleVerifyLogin(sql, body, env) {
       AND purpose = 'login'
       AND used = false
       AND expires_at > NOW()
+      AND attempts < ${MAX_OTP_ATTEMPTS}
     ORDER BY created_at DESC
     LIMIT 1
   `;
 
   if (!otpRecord) {
+    await incrementOtpAttempts(sql, username, 'login');
     return {
       status: 400,
       body: { success: false, message: 'Invalid or expired OTP' },

@@ -4,10 +4,7 @@
 export async function handleFetchRates(sql) {
   const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
   if (!response.ok) {
-    return {
-      status: 502,
-      body: { success: false, message: `Failed to fetch rates: ${response.status} ${response.statusText}` },
-    };
+    throw new Error(`Failed to fetch rates: ${response.status} ${response.statusText}`);
   }
   const data = await response.json();
   const rates = data.rates;

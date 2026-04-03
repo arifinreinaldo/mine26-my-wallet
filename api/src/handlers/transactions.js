@@ -1,3 +1,5 @@
+import { checkWalletAccess } from './wallets.js';
+
 /**
  * Add a transaction to a wallet
  */
@@ -11,24 +13,23 @@ export async function handleAddTransaction(sql, walletId, body, authUserId) {
     };
   }
 
-  // Verify user is a member with editor or owner role
-  const [membership] = await sql`
-    SELECT role FROM wallet_users
-    WHERE wallet_id = ${walletId} AND user_id = ${authUserId}
-  `;
-
-  if (!membership) {
+  if (typeof amount !== 'number' || amount <= 0) {
     return {
-      status: 403,
-      body: { success: false, message: 'You are not a member of this wallet' },
+      status: 400,
+      body: { success: false, message: 'amount must be a positive number' },
     };
   }
 
-  if (membership.role === 'viewer') {
-    return {
-      status: 403,
-      body: { success: false, message: 'Viewers cannot add transactions' },
-    };
+  // Verify user is a member with editor or owner role
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (!access.role) {
+    return { status: 403, body: { success: false, message: 'You are not a member of this wallet' } };
+  }
+  if (access.role === 'viewer') {
+    return { status: 403, body: { success: false, message: 'Viewers cannot add transactions' } };
   }
 
   // Resolve currency
@@ -74,16 +75,12 @@ export async function handleAddTransaction(sql, walletId, body, authUserId) {
  */
 export async function handleGetTransactions(sql, walletId, searchParams, authUserId) {
   // Verify user is a member
-  const [membership] = await sql`
-    SELECT role FROM wallet_users
-    WHERE wallet_id = ${walletId} AND user_id = ${authUserId}
-  `;
-
-  if (!membership) {
-    return {
-      status: 403,
-      body: { success: false, message: 'You are not a member of this wallet' },
-    };
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (!access.role) {
+    return { status: 403, body: { success: false, message: 'You are not a member of this wallet' } };
   }
 
   const fromDate = searchParams.get('from');

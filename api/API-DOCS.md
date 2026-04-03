@@ -180,7 +180,7 @@ POST /api/rates/manual
 
 ### Create Wallet
 
-Creates a new wallet. The creating user is automatically added as `owner`.
+Creates a new wallet. The authenticated user is automatically added as `owner`.
 
 ```
 POST /api/wallets
@@ -193,15 +193,15 @@ POST /api/wallets
 | `name` | string | Yes | Wallet name |
 | `description` | string | No | Wallet description |
 | `defaultCurrencyCode` | string | No | Default currency (e.g. `SGD`) |
-| `userId` | integer | Yes | ID of the user creating the wallet |
+
+> The wallet creator is determined from the JWT token — no `userId` field needed.
 
 **Example:**
 ```json
 {
   "name": "Personal Wallet",
   "description": "Daily expenses",
-  "defaultCurrencyCode": "SGD",
-  "userId": 1
+  "defaultCurrencyCode": "SGD"
 }
 ```
 
@@ -218,28 +218,19 @@ POST /api/wallets
 ```
 
 **Errors:**
-- `400` — Missing `name` or `userId`
+- `400` — Missing `name`
 
 ---
 
 ### List Wallets
 
-Returns all wallets a user belongs to.
+Returns all wallets the authenticated user belongs to.
 
 ```
-GET /api/wallets?userId={USER_ID}
+GET /api/wallets
 ```
 
-**Query Parameters:**
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `userId` | integer | Yes | User ID |
-
-**Example:**
-```
-GET /api/wallets?userId=1
-```
+> The user is determined from the JWT token — no `userId` query parameter needed.
 
 **Response:**
 ```json
@@ -264,11 +255,15 @@ GET /api/wallets?userId=1
 
 ### Get Wallet Members
 
-Returns all members of a wallet with their roles.
+Returns all members of a wallet with their roles. Requires wallet membership.
 
 ```
 GET /api/wallets/{walletId}/members
 ```
+
+**Errors:**
+- `403` — Not a member of this wallet
+- `404` — Wallet not found
 
 **Response:**
 ```json
@@ -298,7 +293,7 @@ GET /api/wallets/{walletId}/members
 
 ### Add Wallet Member
 
-Add a user to a wallet with a specific role.
+Add a user to a wallet with a specific role. Requires `owner` or `editor` role. Only owners can assign the `owner` role.
 
 ```
 POST /api/wallets/{walletId}/members
@@ -329,14 +324,15 @@ POST /api/wallets/{walletId}/members
 
 **Errors:**
 - `400` — Missing `userId`
-- `404` — User not found
+- `403` — Insufficient permissions (viewer cannot add, non-owner cannot assign owner role)
+- `404` — Wallet or user not found
 - `409` — User is already a member
 
 ---
 
 ### Remove Wallet Member
 
-Remove a user from a wallet.
+Remove a user from a wallet. Requires `owner` role. Cannot remove the last owner.
 
 ```
 DELETE /api/wallets/{walletId}/members/{userId}
@@ -356,7 +352,9 @@ DELETE /api/wallets/1/members/2
 ```
 
 **Errors:**
-- `404` — Member not found in this wallet
+- `400` — Cannot remove the last owner
+- `403` — Only owners can remove members
+- `404` — Wallet or member not found
 
 ---
 
@@ -364,7 +362,7 @@ DELETE /api/wallets/1/members/2
 
 ### Add Transaction
 
-Add a transaction to a wallet. Records which user created it.
+Add a transaction to a wallet. The creating user is determined from the JWT token. Requires `owner` or `editor` role.
 
 ```
 POST /api/wallets/{walletId}/transactions
@@ -376,12 +374,13 @@ POST /api/wallets/{walletId}/transactions
 |---|---|---|---|
 | `date` | string | Yes | Date in `YYYY-MM-DD` format |
 | `description` | string | No | Transaction description |
-| `amount` | number | Yes | Transaction amount |
+| `amount` | number | Yes | Positive number |
 | `currencyCode` | string | Yes | Currency code (e.g. `SGD`, `USD`) |
 | `categoryId` | integer | No | Category ID |
 | `paymentMethod` | string | No | e.g. `Credit Card`, `Cash`, `Debit` |
 | `notes` | string | No | Additional notes |
-| `userId` | integer | Yes | ID of the user adding this transaction |
+
+> The transaction creator is determined from the JWT token — no `userId` field needed.
 
 **Example:**
 ```json
@@ -391,8 +390,7 @@ POST /api/wallets/{walletId}/transactions
   "amount": 45.00,
   "currencyCode": "SGD",
   "categoryId": 1,
-  "paymentMethod": "Credit Card",
-  "userId": 1
+  "paymentMethod": "Credit Card"
 }
 ```
 
@@ -410,14 +408,15 @@ POST /api/wallets/{walletId}/transactions
 ```
 
 **Errors:**
-- `400` — Missing `userId` or invalid currency code
-- `403` — User is not a member of this wallet, or user is a `viewer`
+- `400` — Missing required fields, invalid amount, or invalid currency code
+- `403` — Not a member of this wallet, or user is a `viewer`
+- `404` — Wallet not found
 
 ---
 
 ### List Transactions
 
-List all transactions for a wallet. Each transaction shows who created it.
+List all transactions for a wallet. Requires wallet membership. Each transaction shows who created it.
 
 ```
 GET /api/wallets/{walletId}/transactions
@@ -470,7 +469,7 @@ GET /api/wallets/1/transactions?createdBy=2
 
 ### Spending Report
 
-Get a spending report for a wallet with all amounts converted to a target currency. Includes aggregation by month, category, and user.
+Get a spending report for a wallet with all amounts converted to a target currency. Requires wallet membership. Includes aggregation by month, category, and user.
 
 ```
 GET /api/wallets/{walletId}/reports/spending
@@ -560,10 +559,10 @@ GET /api/wallets/1/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31
 
 ## Wallet Roles
 
-| Role | View Transactions | Add/Edit Transactions | Manage Members | Delete Wallet |
+| Role | View Transactions | Add Transactions | Add Members | Remove Members |
 |---|---|---|---|---|
 | `owner` | Yes | Yes | Yes | Yes |
-| `editor` | Yes | Yes | No | No |
+| `editor` | Yes | Yes | Yes | No |
 | `viewer` | Yes | No | No | No |
 
 ---
@@ -585,6 +584,7 @@ All errors follow this format:
 | `403` | Forbidden — user lacks permission |
 | `404` | Not found — resource doesn't exist |
 | `409` | Conflict — duplicate (e.g. user already a member) |
+| `429` | Too many requests — OTP attempt limit exceeded |
 | `500` | Server error |
 
 ---
