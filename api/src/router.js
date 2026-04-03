@@ -64,7 +64,7 @@ import { verifyJwt } from './helpers/jwt.js';
  * Match a URL path against a pattern with :param placeholders.
  * Returns an object of params if matched, or null.
  */
-function matchPath(pattern, pathname) {
+export function matchPath(pattern, pathname) {
   const patternParts = pattern.split('/').filter(Boolean);
   const pathParts = pathname.split('/').filter(Boolean);
 

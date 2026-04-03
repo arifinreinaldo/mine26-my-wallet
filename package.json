@@ -5,6 +5,7 @@
   "scripts": {
     "db:migrate": "cd db && ./migrate.sh",
     "api:dev": "cd api && npm run dev",
-    "api:deploy": "cd api && npm run deploy"
+    "api:deploy": "cd api && npm run deploy",
+    "api:test": "cd api && npm test"
   }
 }

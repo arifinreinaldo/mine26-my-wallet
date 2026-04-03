@@ -1,0 +1,144 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createMockSql } from './helpers/mockSql.js';
+import {
+  handleCheckUsername,
+  handleRegister,
+  handleVerifyRegistration,
+  handleLogin,
+  handleVerifyLogin,
+} from '../src/handlers/auth.js';
+
+// Mock global fetch for ntfy.sh calls
+beforeEach(() => {
+  global.fetch = vi.fn(() => Promise.resolve(new Response('OK')));
+});
+
+describe('handleCheckUsername', () => {
+  it('returns 400 for missing username', async () => {
+    const sql = createMockSql([]);
+    const result = await handleCheckUsername(sql, null);
+    expect(result.status).toBe(400);
+  });
+
+  it('returns available=true when user does not exist', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id FROM users', result: [] },
+    ]);
+    const result = await handleCheckUsername(sql, 'newuser');
+    expect(result.body.available).toBe(true);
+  });
+
+  it('returns available=false when user exists', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id FROM users', result: [{ id: 1 }] },
+    ]);
+    const result = await handleCheckUsername(sql, 'existing');
+    expect(result.body.available).toBe(false);
+  });
+});
+
+describe('handleRegister', () => {
+  it('returns 400 for missing fields', async () => {
+    const sql = createMockSql([]);
+    const result = await handleRegister(sql, { name: 'John' });
+    expect(result.status).toBe(400);
+  });
+
+  it('returns 409 for duplicate email', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id FROM users WHERE email', result: [{ id: 1 }] },
+    ]);
+    const result = await handleRegister(sql, {
+      name: 'John', email: 'john@test.com', username: 'john',
+    });
+    expect(result.status).toBe(409);
+    expect(result.body.message).toContain('email');
+  });
+
+  it('returns 409 for duplicate username', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id FROM users WHERE email', result: [] },
+      { match: 'SELECT id FROM users WHERE username', result: [{ id: 1 }] },
+    ]);
+    const result = await handleRegister(sql, {
+      name: 'John', email: 'john@test.com', username: 'john',
+    });
+    expect(result.status).toBe(409);
+    expect(result.body.message).toContain('username');
+  });
+
+  it('sends OTP on successful registration', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id FROM users WHERE email', result: [] },
+      { match: 'SELECT id FROM users WHERE username', result: [] },
+      { match: 'INSERT INTO users', result: [] },
+      { match: 'INSERT INTO otp_codes', result: [] },
+    ]);
+    const result = await handleRegister(sql, {
+      name: 'John', email: 'john@test.com', username: 'john',
+    });
+    expect(result.body.success).toBe(true);
+    expect(result.body.message).toBe('OTP sent');
+    expect(global.fetch).toHaveBeenCalled();
+  });
+});
+
+describe('handleLogin', () => {
+  it('returns 400 for missing username', async () => {
+    const sql = createMockSql([]);
+    const result = await handleLogin(sql, {});
+    expect(result.status).toBe(400);
+  });
+
+  it('returns 404 for non-existent user', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified', result: [] },
+    ]);
+    const result = await handleLogin(sql, { username: 'nobody' });
+    expect(result.status).toBe(404);
+  });
+
+  it('returns 403 for unverified user', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified', result: [{ id: 1, verified: false }] },
+    ]);
+    const result = await handleLogin(sql, { username: 'unverified' });
+    expect(result.status).toBe(403);
+  });
+});
+
+describe('handleVerifyRegistration', () => {
+  it('returns 400 for missing otp', async () => {
+    const sql = createMockSql([]);
+    const result = await handleVerifyRegistration(sql, { username: 'john' }, {});
+    expect(result.status).toBe(400);
+  });
+
+  it('returns 429 when OTP locked out', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '1' }] },
+    ]);
+    const result = await handleVerifyRegistration(sql, {
+      username: 'john', otp: '123456',
+    }, { JWT_SECRET: 'test' });
+    expect(result.status).toBe(429);
+  });
+});
+
+describe('handleVerifyLogin', () => {
+  it('returns 400 for missing fields', async () => {
+    const sql = createMockSql([]);
+    const result = await handleVerifyLogin(sql, { username: 'john' }, {});
+    expect(result.status).toBe(400);
+  });
+
+  it('returns 429 when locked out', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '1' }] },
+    ]);
+    const result = await handleVerifyLogin(sql, {
+      username: 'john', otp: '123456',
+    }, { JWT_SECRET: 'test' });
+    expect(result.status).toBe(429);
+  });
+});

@@ -5,7 +5,7 @@ const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
 /**
  * Calculate the next due date given a frequency and current date.
  */
-function calculateNextDueDate(currentDate, frequency) {
+export function calculateNextDueDate(currentDate, frequency) {
   const d = new Date(currentDate + 'T00:00:00Z');
   const origDay = d.getUTCDate();
 

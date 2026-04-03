@@ -63,7 +63,7 @@ export async function handleExportCsv(sql, walletId, searchParams, authUserId) {
   };
 }
 
-function escapeCsv(str) {
+export function escapeCsv(str) {
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
