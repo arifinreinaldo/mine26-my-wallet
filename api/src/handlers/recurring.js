@@ -198,6 +198,7 @@ export async function processRecurringTransactions(sql) {
   `;
 
   let processed = 0;
+  const updates = [];
 
   for (const r of dueRecurring) {
     // Create the actual transaction
@@ -213,15 +214,29 @@ export async function processRecurringTransactions(sql) {
 
     // Calculate next due date
     const nextDue = calculateNextDueDate(r.next_due_date, r.frequency);
-
-    // Deactivate if past end_date
-    if (r.end_date && nextDue > r.end_date) {
-      await sql`UPDATE recurring_transactions SET is_active = false, next_due_date = ${nextDue} WHERE id = ${r.id}`;
-    } else {
-      await sql`UPDATE recurring_transactions SET next_due_date = ${nextDue} WHERE id = ${r.id}`;
-    }
+    const deactivate = !!(r.end_date && nextDue > r.end_date);
+    updates.push({ id: r.id, nextDue, deactivate });
 
     processed++;
+  }
+
+  // Batch UPDATE all recurring entries at once
+  if (updates.length > 0) {
+    const ids = updates.map(u => u.id);
+    const nextDues = updates.map(u => u.nextDue);
+    const actives = updates.map(u => !u.deactivate);
+
+    await sql`
+      UPDATE recurring_transactions AS rt SET
+        next_due_date = u.next_due::date,
+        is_active = u.active
+      FROM (SELECT
+        unnest(${ids}::int[]) AS id,
+        unnest(${nextDues}::text[]) AS next_due,
+        unnest(${actives}::boolean[]) AS active
+      ) u WHERE rt.id = u.id
+    `;
+  }
   }
 
   return processed;

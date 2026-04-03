@@ -58,28 +58,68 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
     ORDER BY t.date DESC
   `;
 
-  // Convert each transaction to target currency
-  const convertedTransactions = await Promise.all(
-    transactions.map(async (t) => {
-      const rate = await getRate(sql, t.currency_id, targetCurr.id, t.date);
-      return {
-        id: t.id,
-        date: t.date,
-        description: t.description,
-        originalAmount: parseFloat(t.amount),
-        originalCurrency: t.currency_code,
-        type: t.type,
-        convertedAmount: rate ? parseFloat(t.amount) * rate : null,
-        exchangeRate: rate,
-        category: t.category_name,
-        paymentMethod: t.payment_method,
-        createdBy: {
-          id: t.created_by_id,
-          name: t.created_by_name,
-        },
-      };
-    })
-  );
+  // Batch-fetch all exchange rates needed for conversion
+  const rateMap = new Map(); // "currencyId:date" -> rate
+
+  // Collect unique (currency_id, date) pairs needing conversion
+  const uniquePairs = new Map();
+  for (const t of transactions) {
+    if (t.currency_id === targetCurr.id) continue;
+    const key = `${t.currency_id}:${t.date}`;
+    if (!uniquePairs.has(key)) {
+      uniquePairs.set(key, { currencyId: t.currency_id, date: t.date });
+    }
+  }
+
+  if (uniquePairs.size > 0) {
+    const fromIds = [...uniquePairs.values()].map(p => p.currencyId);
+    const dates = [...uniquePairs.values()].map(p => p.date);
+
+    const rateRows = await sql`
+      SELECT sub.from_id, sub.dt::text AS dt, er.rate, er.from_currency_id, er.to_currency_id
+      FROM (SELECT unnest(${fromIds}::int[]) AS from_id, unnest(${dates}::date[]) AS dt) sub
+      LEFT JOIN LATERAL (
+        SELECT rate, from_currency_id, to_currency_id FROM exchange_rates
+        WHERE ((from_currency_id = sub.from_id AND to_currency_id = ${targetCurr.id})
+            OR (from_currency_id = ${targetCurr.id} AND to_currency_id = sub.from_id))
+          AND effective_date <= sub.dt
+        ORDER BY effective_date DESC LIMIT 1
+      ) er ON true
+    `;
+
+    for (const row of rateRows) {
+      const key = `${row.from_id}:${row.dt}`;
+      if (!row.rate) { rateMap.set(key, null); continue; }
+      const rate = row.from_currency_id === row.from_id
+        ? parseFloat(row.rate)
+        : 1.0 / parseFloat(row.rate);
+      rateMap.set(key, rate);
+    }
+  }
+
+  // Convert transactions synchronously using rate map
+  const convertedTransactions = transactions.map(t => {
+    const rate = t.currency_id === targetCurr.id
+      ? 1.0
+      : rateMap.get(`${t.currency_id}:${t.date}`) ?? null;
+
+    return {
+      id: t.id,
+      date: t.date,
+      description: t.description,
+      originalAmount: parseFloat(t.amount),
+      originalCurrency: t.currency_code,
+      type: t.type,
+      convertedAmount: rate ? parseFloat(t.amount) * rate : null,
+      exchangeRate: rate,
+      category: t.category_name,
+      paymentMethod: t.payment_method,
+      createdBy: {
+        id: t.created_by_id,
+        name: t.created_by_name,
+      },
+    };
+  });
 
   // Aggregate by category (expenses only)
   const categoryTotals = {};
@@ -139,35 +179,4 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
       },
     },
   };
-}
-
-/**
- * Get exchange rate between two currencies for a given date.
- * Falls back to inverse rate if direct rate not found.
- */
-async function getRate(sql, fromCurrencyId, toCurrencyId, date) {
-  if (fromCurrencyId === toCurrencyId) return 1.0;
-
-  const [rate] = await sql`
-    SELECT rate FROM exchange_rates
-    WHERE from_currency_id = ${fromCurrencyId}
-      AND to_currency_id = ${toCurrencyId}
-      AND effective_date <= ${date}
-    ORDER BY effective_date DESC
-    LIMIT 1
-  `;
-
-  if (rate) return parseFloat(rate.rate);
-
-  // Try inverse
-  const [inverseRate] = await sql`
-    SELECT rate FROM exchange_rates
-    WHERE from_currency_id = ${toCurrencyId}
-      AND to_currency_id = ${fromCurrencyId}
-      AND effective_date <= ${date}
-    ORDER BY effective_date DESC
-    LIMIT 1
-  `;
-
-  return inverseRate ? 1.0 / parseFloat(inverseRate.rate) : null;
 }

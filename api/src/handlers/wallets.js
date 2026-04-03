@@ -3,16 +3,13 @@
  * Returns { exists, role } where role is null if not a member.
  */
 export async function checkWalletAccess(sql, walletId, userId) {
-  const [wallet] = await sql`
-    SELECT id FROM wallets WHERE id = ${walletId}
+  const [row] = await sql`
+    SELECT w.id, wu.role FROM wallets w
+    LEFT JOIN wallet_users wu ON wu.wallet_id = w.id AND wu.user_id = ${userId}
+    WHERE w.id = ${walletId}
   `;
-  if (!wallet) return { exists: false, role: null };
-
-  const [membership] = await sql`
-    SELECT role FROM wallet_users
-    WHERE wallet_id = ${walletId} AND user_id = ${userId}
-  `;
-  return { exists: true, role: membership?.role || null };
+  if (!row) return { exists: false, role: null };
+  return { exists: true, role: row.role || null };
 }
 
 /**
@@ -64,7 +61,8 @@ export async function handleCreateWallet(sql, body, authUserId) {
 }
 
 /**
- * List wallets the authenticated user belongs to
+ * List wallets the authenticated user belongs to.
+ * Computes currentBalance by converting cross-currency transactions using latest exchange rates.
  */
 export async function handleGetWallets(sql, authUserId) {
   const wallets = await sql`
@@ -78,38 +76,89 @@ export async function handleGetWallets(sql, authUserId) {
       wu.role AS my_role,
       w.created_at,
       u.name AS created_by_name,
-      (SELECT COUNT(*) FROM wallet_users WHERE wallet_id = w.id) AS member_count
+      COALESCE(mc.member_count, 0) AS member_count
     FROM wallets w
     JOIN wallet_users wu ON wu.wallet_id = w.id AND wu.user_id = ${authUserId}
     LEFT JOIN currencies c ON w.default_currency_id = c.id
     LEFT JOIN users u ON w.created_by_user_id = u.id
+    LEFT JOIN (
+      SELECT wallet_id, COUNT(*) AS member_count
+      FROM wallet_users GROUP BY wallet_id
+    ) mc ON mc.wallet_id = w.id
     ORDER BY w.created_at DESC
   `;
 
-  // Compute balance per wallet, converting cross-currency transactions
-  const results = await Promise.all(wallets.map(async (w) => {
+  if (wallets.length === 0) {
+    return { body: { success: true, wallets: [] } };
+  }
+
+  // Batch-fetch transaction nets for ALL wallets in 1 query
+  const walletIds = wallets.map(w => w.id);
+  const txNets = await sql`
+    SELECT wallet_id, currency_id,
+      SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END) AS net
+    FROM transactions
+    WHERE wallet_id = ANY(${walletIds})
+    GROUP BY wallet_id, currency_id
+  `;
+
+  // Build a lookup: walletId -> [{ currencyId, net }]
+  const netsByWallet = new Map();
+  for (const row of txNets) {
+    if (!netsByWallet.has(row.wallet_id)) netsByWallet.set(row.wallet_id, []);
+    netsByWallet.get(row.wallet_id).push({
+      currencyId: row.currency_id,
+      net: parseFloat(row.net),
+    });
+  }
+
+  // Collect unique currency pairs needing conversion
+  const ratePairsSet = new Set();
+  for (const row of txNets) {
+    const wallet = wallets.find(w => w.id === row.wallet_id);
+    if (wallet?.default_currency_id && row.currency_id !== wallet.default_currency_id) {
+      ratePairsSet.add(`${row.currency_id}:${wallet.default_currency_id}`);
+    }
+  }
+
+  // Batch-fetch all latest rates in 1 query
+  const rateMap = new Map(); // "fromId:toId" -> rate
+  if (ratePairsSet.size > 0) {
+    const fromIds = [...ratePairsSet].map(p => parseInt(p.split(':')[0]));
+    const toIds = [...ratePairsSet].map(p => parseInt(p.split(':')[1]));
+
+    const rateRows = await sql`
+      SELECT sub.from_id, sub.to_id, er.rate, er.from_currency_id, er.to_currency_id
+      FROM (SELECT unnest(${fromIds}::int[]) AS from_id, unnest(${toIds}::int[]) AS to_id) sub
+      LEFT JOIN LATERAL (
+        SELECT rate, from_currency_id, to_currency_id FROM exchange_rates
+        WHERE ((from_currency_id = sub.from_id AND to_currency_id = sub.to_id)
+            OR (from_currency_id = sub.to_id AND to_currency_id = sub.from_id))
+        ORDER BY effective_date DESC LIMIT 1
+      ) er ON true
+    `;
+
+    for (const row of rateRows) {
+      const key = `${row.from_id}:${row.to_id}`;
+      if (!row.rate) { rateMap.set(key, null); continue; }
+      const rate = row.from_currency_id === row.from_id
+        ? parseFloat(row.rate)
+        : 1.0 / parseFloat(row.rate);
+      rateMap.set(key, rate);
+    }
+  }
+
+  // Compute balances synchronously
+  const results = wallets.map(w => {
     let transactionNet = 0;
+    const entries = netsByWallet.get(w.id) || [];
 
-    if (w.default_currency_id) {
-      // Get all transactions grouped by currency
-      const txByCurrency = await sql`
-        SELECT
-          t.currency_id,
-          SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END) AS net
-        FROM transactions t
-        WHERE t.wallet_id = ${w.id}
-        GROUP BY t.currency_id
-      `;
-
-      for (const row of txByCurrency) {
-        const net = parseFloat(row.net);
-        if (row.currency_id === w.default_currency_id) {
-          transactionNet += net;
-        } else {
-          // Convert to wallet's default currency using latest rate
-          const rate = await getLatestRate(sql, row.currency_id, w.default_currency_id);
-          transactionNet += rate ? net * rate : net;
-        }
+    for (const entry of entries) {
+      if (!w.default_currency_id || entry.currencyId === w.default_currency_id) {
+        transactionNet += entry.net;
+      } else {
+        const rate = rateMap.get(`${entry.currencyId}:${w.default_currency_id}`);
+        transactionNet += rate ? entry.net * rate : entry.net;
       }
     }
 
@@ -125,33 +174,11 @@ export async function handleGetWallets(sql, authUserId) {
       memberCount: parseInt(w.member_count),
       createdAt: w.created_at,
     };
-  }));
+  });
 
   return {
     body: { success: true, wallets: results },
   };
-}
-
-/**
- * Get the latest exchange rate between two currencies.
- * Falls back to inverse rate if direct not found.
- */
-async function getLatestRate(sql, fromCurrencyId, toCurrencyId) {
-  if (fromCurrencyId === toCurrencyId) return 1.0;
-
-  const [rate] = await sql`
-    SELECT rate FROM exchange_rates
-    WHERE from_currency_id = ${fromCurrencyId} AND to_currency_id = ${toCurrencyId}
-    ORDER BY effective_date DESC LIMIT 1
-  `;
-  if (rate) return parseFloat(rate.rate);
-
-  const [inverse] = await sql`
-    SELECT rate FROM exchange_rates
-    WHERE from_currency_id = ${toCurrencyId} AND to_currency_id = ${fromCurrencyId}
-    ORDER BY effective_date DESC LIMIT 1
-  `;
-  return inverse ? 1.0 / parseFloat(inverse.rate) : null;
 }
 
 /**
