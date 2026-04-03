@@ -603,6 +603,54 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Sync",
+			"item": [
+				{
+					"name": "Push Sync (Offline Changes)",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/sync",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "sync"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"changes\": [\n    {\n      \"clientId\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"operation\": \"create\",\n      \"data\": {\n        \"date\": \"2025-02-01\",\n        \"description\": \"Coffee\",\n        \"amount\": 5.50,\n        \"type\": \"expense\",\n        \"currencyCode\": \"SGD\",\n        \"categoryId\": 1,\n        \"paymentMethod\": \"Cash\"\n      },\n      \"clientUpdatedAt\": \"2025-02-01T08:30:00Z\"\n    }\n  ]\n}"
+						}
+					}
+				},
+				{
+					"name": "Pull Sync (Get Changes)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/sync?since=2025-01-01T00:00:00Z",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "sync"],
+							"query": [
+								{ "key": "since", "value": "2025-01-01T00:00:00Z", "description": "Omit for full sync" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Pull Sync (Full)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/sync",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "sync"]
+						}
+					}
+				}
+			]
 		}
 	]
 }

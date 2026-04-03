@@ -98,7 +98,7 @@ export async function handleGetWallets(sql, authUserId) {
     SELECT wallet_id, currency_id,
       SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END) AS net
     FROM transactions
-    WHERE wallet_id = ANY(${walletIds})
+    WHERE wallet_id = ANY(${walletIds}) AND deleted_at IS NULL
     GROUP BY wallet_id, currency_id
   `;
 

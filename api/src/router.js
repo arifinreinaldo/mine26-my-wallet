@@ -46,6 +46,11 @@ import {
 import { handleExportCsv } from './handlers/export.js';
 
 import {
+  handlePushSync,
+  handlePullSync,
+} from './handlers/sync.js';
+
+import {
   handleCheckUsername,
   handleRegister,
   handleVerifyRegistration,
@@ -129,6 +134,10 @@ const protectedRoutes = [
 
   // Export (wallet-scoped)
   { method: 'GET', path: '/api/wallets/:walletId/export/csv', handler: (sql, params, url, _b, _e, user) => handleExportCsv(sql, params.walletId, url.searchParams, user.userId) },
+
+  // Sync (wallet-scoped)
+  { method: 'POST', path: '/api/wallets/:walletId/sync', handler: (sql, params, _u, body, _e, user) => handlePushSync(sql, params.walletId, body, user.userId) },
+  { method: 'GET', path: '/api/wallets/:walletId/sync', handler: (sql, params, url, _b, _e, user) => handlePullSync(sql, params.walletId, url.searchParams, user.userId) },
 ];
 
 export async function handleRoute(sql, method, url, request, env) {

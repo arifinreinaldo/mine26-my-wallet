@@ -53,6 +53,7 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
     LEFT JOIN categories cat ON t.category_id = cat.id
     JOIN users u ON t.created_by_user_id = u.id
     WHERE t.wallet_id = ${walletId}
+      AND t.deleted_at IS NULL
       AND (${fromDate}::date IS NULL OR t.date >= ${fromDate}::date)
       AND (${toDate}::date IS NULL OR t.date <= ${toDate}::date)
     ORDER BY t.date DESC

@@ -23,7 +23,8 @@ mine26-my-wallet/
 │   │       ├── categories.js    # Custom categories with icons/colors
 │   │       ├── recurring.js     # Recurring transactions (auto-posting via cron)
 │   │       ├── reports.js  # Spending reports with income/expense & cash flow
-│   │       └── export.js   # CSV export
+│   │       ├── export.js   # CSV export
+│   │       └── sync.js     # Offline sync (push/pull)
 │   ├── wrangler.toml       # Cloudflare Worker config
 │   ├── package.json        # API dependencies
 │   ├── API-DOCS.md         # Full API documentation
@@ -93,14 +94,16 @@ These are configured as Cloudflare Worker secrets (not .env files) and GitHub Ac
 - **Custom categories**: Global seeded categories (8) + per-wallet custom categories with icon/color
 - **Recurring transactions**: Cron job processes due recurring entries, creating actual transactions and advancing `next_due_date`
 - **OTP brute-force protection**: Max 5 attempts per OTP code before lockout
-- **Scheduled trigger**: Daily 08:00 UTC cron fetches exchange rates and processes recurring transactions
+- **Offline sync**: Push/pull endpoints for offline transaction sync. UUID client_id for idempotency, soft deletes (deleted_at), last-write-wins conflict resolution, 90-day cleanup cron
+- **Soft deletes**: Transactions use `deleted_at` instead of hard delete. All queries filter `deleted_at IS NULL`
+- **Scheduled trigger**: Daily 08:00 UTC cron fetches exchange rates, processes recurring transactions, and cleans up 90+ day soft-deleted records
 - **Two-stage rate workflow**: Fetch recommendations, then manually apply/approve
 - **CORS**: Open (`*`) for all origins
 
 ## Database
 
-- **14 migrations** in `db/migrations/` (001-014), applied via `migrate.sh`
-- **Core tables**: users, wallets, wallet_users (M2M with roles), transactions (income/expense), currencies (6 supported: SGD/USD/EUR/MYR/GBP/JPY), categories (8 seeded + custom), exchange_rates, exchange_rate_recommendations, otp_codes, recurring_transactions
+- **16 migrations** in `db/migrations/` (001-016), applied via `migrate.sh`
+- **Core tables**: users, wallets, wallet_users (M2M with roles), transactions (income/expense, soft-delete), currencies (6 supported: SGD/USD/EUR/MYR/GBP/JPY), categories (8 seeded + custom), exchange_rates, exchange_rate_recommendations, otp_codes, recurring_transactions
 - **Conventions**: Use `TIMESTAMPTZ`, cascading deletes on foreign keys, indices on frequently queried columns
 - **New migrations**: Create file `db/migrations/NNN_description.sql` following existing numbering
 
@@ -119,5 +122,6 @@ These are configured as Cloudflare Worker secrets (not .env files) and GitHub Ac
 | `api/src/helpers/jwt.js` | JWT create/verify using Web Crypto API |
 | `api/src/handlers/wallets.js` | Wallet CRUD + `checkWalletAccess()` shared helper |
 | `api/src/handlers/recurring.js` | Recurring transactions + `processRecurringTransactions()` for cron |
+| `api/src/handlers/sync.js` | Offline sync push/pull endpoints |
 | `api/API-DOCS.md` | Complete API reference with examples |
 | `PLAN-neon-cloudflare-worker.md` | Architecture decisions and schema design |

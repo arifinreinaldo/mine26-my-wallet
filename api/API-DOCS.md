@@ -345,6 +345,121 @@ Returns a downloadable CSV file with columns: Date, Type, Description, Amount, C
 
 ---
 
+## Offline Sync
+
+Enables mobile/web clients to create transactions offline and sync when back online. Uses UUID-based client IDs for idempotent syncing and last-write-wins conflict resolution.
+
+### Push Sync (Upload Offline Changes)
+
+```
+POST /api/wallets/{walletId}/sync
+```
+
+**Request Body:**
+
+```json
+{
+  "changes": [
+    {
+      "clientId": "uuid-generated-by-client",
+      "operation": "create",
+      "data": {
+        "date": "2025-02-01",
+        "description": "Coffee",
+        "amount": 5.50,
+        "type": "expense",
+        "currencyCode": "SGD",
+        "categoryId": 1,
+        "paymentMethod": "Cash"
+      },
+      "clientUpdatedAt": "2025-02-01T08:30:00Z"
+    },
+    {
+      "clientId": "existing-uuid",
+      "operation": "update",
+      "data": { "amount": 6.00 },
+      "clientUpdatedAt": "2025-02-01T09:00:00Z"
+    },
+    {
+      "clientId": "existing-uuid",
+      "operation": "delete",
+      "clientUpdatedAt": "2025-02-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Operations:**
+- `create` — inserts or upserts (idempotent via `client_id`). Last-write-wins if retried.
+- `update` — partial update. Only applies if `clientUpdatedAt` is newer than server's `updated_at`.
+- `delete` — soft deletes the transaction (`deleted_at` set, not hard deleted).
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "results": [
+    { "clientId": "...", "status": "created", "serverId": 42 },
+    { "clientId": "...", "status": "updated", "serverId": 89 },
+    { "clientId": "...", "status": "deleted", "serverId": 55 }
+  ],
+  "errors": []
+}
+```
+
+Possible statuses: `created`, `updated`, `deleted`, `conflict`, `already_deleted`, `error`.
+
+Requires owner or editor role.
+
+### Pull Sync (Download Server Changes)
+
+```
+GET /api/wallets/{walletId}/sync?since={ISO_TIMESTAMP}
+```
+
+| Param | Type | Description |
+|---|---|---|
+| `since` | string | ISO timestamp from previous sync. Omit for full sync. |
+
+Returns all transactions changed since `since`, including soft-deleted records (so client can remove them locally).
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "walletId": 1,
+  "changes": [
+    {
+      "serverId": 42,
+      "clientId": "uuid-...",
+      "date": "2025-02-01",
+      "description": "Coffee",
+      "amount": 5.50,
+      "type": "expense",
+      "currencyCode": "SGD",
+      "updatedAt": "2025-02-01T08:30:00Z",
+      "deletedAt": null
+    }
+  ],
+  "syncTimestamp": "2025-02-01T12:00:00Z"
+}
+```
+
+Store `syncTimestamp` and pass it as `since` on the next pull.
+
+### Sync Flow (Client Side)
+
+1. App opens → `GET /sync?since={lastSync}` (pull server changes)
+2. Merge into local database
+3. Collect unsynced local changes
+4. `POST /sync` with batch (push)
+5. Mark successful items as synced
+6. Store `syncTimestamp` for next pull
+
+---
+
 ## Supported Currencies
 
 | Code | Name | Symbol |

@@ -91,7 +91,7 @@ export async function handleEditTransaction(sql, walletId, transactionId, body, 
   // Verify transaction exists and belongs to this wallet
   const [existing] = await sql`
     SELECT id, created_by_user_id FROM transactions
-    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+    WHERE id = ${transactionId} AND wallet_id = ${walletId} AND deleted_at IS NULL
   `;
 
   if (!existing) {
@@ -140,7 +140,8 @@ export async function handleEditTransaction(sql, walletId, transactionId, body, 
       currency_id = CASE WHEN ${hasCurrency} THEN ${currencyId} ELSE currency_id END,
       category_id = CASE WHEN ${hasCategoryId} THEN ${categoryId} ELSE category_id END,
       payment_method = CASE WHEN ${hasPayment} THEN ${paymentMethod} ELSE payment_method END,
-      notes = CASE WHEN ${hasNotes} THEN ${notes} ELSE notes END
+      notes = CASE WHEN ${hasNotes} THEN ${notes} ELSE notes END,
+      updated_at = NOW()
     WHERE id = ${transactionId} AND wallet_id = ${walletId}
     RETURNING id
   `;
@@ -167,7 +168,7 @@ export async function handleDeleteTransaction(sql, walletId, transactionId, auth
 
   const [existing] = await sql`
     SELECT id, created_by_user_id FROM transactions
-    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+    WHERE id = ${transactionId} AND wallet_id = ${walletId} AND deleted_at IS NULL
   `;
 
   if (!existing) {
@@ -178,7 +179,10 @@ export async function handleDeleteTransaction(sql, walletId, transactionId, auth
     return { status: 403, body: { success: false, message: 'You can only delete your own transactions' } };
   }
 
-  await sql`DELETE FROM transactions WHERE id = ${transactionId}`;
+  await sql`
+    UPDATE transactions SET deleted_at = NOW(), updated_at = NOW()
+    WHERE id = ${transactionId}
+  `;
 
   return {
     body: { success: true, message: 'Transaction deleted' },
@@ -225,6 +229,7 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
     LEFT JOIN categories cat ON t.category_id = cat.id
     JOIN users u ON t.created_by_user_id = u.id
     WHERE t.wallet_id = ${walletId}
+      AND t.deleted_at IS NULL
       AND (${fromDate}::date IS NULL OR t.date >= ${fromDate}::date)
       AND (${toDate}::date IS NULL OR t.date <= ${toDate}::date)
       AND (${createdBy}::integer IS NULL OR t.created_by_user_id = ${createdBy}::integer)

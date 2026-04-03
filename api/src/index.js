@@ -63,5 +63,11 @@ export default {
     } catch (error) {
       console.error('Recurring transactions processing failed:', error);
     }
+    try {
+      await sql`DELETE FROM transactions WHERE deleted_at < NOW() - INTERVAL '90 days'`;
+      console.log('Soft delete cleanup completed');
+    } catch (error) {
+      console.error('Soft delete cleanup failed:', error);
+    }
   },
 };
