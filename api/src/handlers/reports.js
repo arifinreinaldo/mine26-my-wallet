@@ -29,6 +29,11 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
     };
   }
 
+  // Get wallet starting balance
+  const [wallet] = await sql`
+    SELECT starting_balance FROM wallets WHERE id = ${walletId}
+  `;
+
   // Get transactions for this wallet
   const transactions = await sql`
     SELECT
@@ -36,6 +41,7 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
       t.date,
       t.description,
       t.amount,
+      t.type,
       c.code AS currency_code,
       c.id AS currency_id,
       cat.name AS category_name,
@@ -62,6 +68,7 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
         description: t.description,
         originalAmount: parseFloat(t.amount),
         originalCurrency: t.currency_code,
+        type: t.type,
         convertedAmount: rate ? parseFloat(t.amount) * rate : null,
         exchangeRate: rate,
         category: t.category_name,
@@ -74,23 +81,38 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
     })
   );
 
-  // Aggregate by category
+  // Aggregate by category (expenses only)
   const categoryTotals = {};
   // Aggregate by month
   const monthlyTotals = {};
   // Aggregate by user
   const userTotals = {};
+  // Income vs expense
+  let totalIncome = 0;
+  let totalExpense = 0;
+  // Monthly cash flow
+  const monthlyCashFlow = {};
 
   convertedTransactions.forEach((t) => {
     const amount = t.convertedAmount || 0;
-
-    // By month
     const month = t.date.substring(0, 7);
-    monthlyTotals[month] = (monthlyTotals[month] || 0) + amount;
 
-    // By category
-    const cat = t.category || 'Uncategorized';
-    categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+    if (t.type === 'income') {
+      totalIncome += amount;
+      if (!monthlyCashFlow[month]) monthlyCashFlow[month] = { income: 0, expense: 0 };
+      monthlyCashFlow[month].income += amount;
+    } else {
+      totalExpense += amount;
+      if (!monthlyCashFlow[month]) monthlyCashFlow[month] = { income: 0, expense: 0 };
+      monthlyCashFlow[month].expense += amount;
+
+      // Category totals for expenses only
+      const cat = t.category || 'Uncategorized';
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+    }
+
+    // By month (net)
+    monthlyTotals[month] = (monthlyTotals[month] || 0) + (t.type === 'income' ? amount : -amount);
 
     // By user
     const userName = t.createdBy.name;
@@ -105,8 +127,13 @@ export async function handleGetSpendingReport(sql, walletId, searchParams, authU
       transactions: convertedTransactions,
       summary: {
         totalTransactions: convertedTransactions.length,
-        totalAmount: convertedTransactions.reduce((sum, t) => sum + (t.convertedAmount || 0), 0),
+        totalIncome,
+        totalExpense,
+        netCashFlow: totalIncome - totalExpense,
+        startingBalance: parseFloat(wallet.starting_balance),
+        currentBalance: parseFloat(wallet.starting_balance) + (totalIncome - totalExpense),
         monthlyTotals,
+        monthlyCashFlow,
         categoryTotals,
         userTotals,
       },

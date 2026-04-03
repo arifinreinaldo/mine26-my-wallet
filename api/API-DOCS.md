@@ -3,6 +3,55 @@
 **Base URL:** `https://spending-tracker-api.arifin-reinaldo.workers.dev`
 
 All responses return JSON with a `success` field. Errors include an `error` or `message` field.
+All protected endpoints require `Authorization: Bearer <jwt>` header.
+
+---
+
+## Authentication
+
+### Check Username Availability
+
+```
+GET /api/auth/check-username?username={USERNAME}
+```
+
+### Register
+
+```
+POST /api/auth/register
+```
+
+**Body:** `{ "name": "...", "email": "...", "username": "..." }`
+
+### Verify Registration
+
+```
+POST /api/auth/verify-registration
+```
+
+**Body:** `{ "username": "...", "otp": "123456" }`
+
+**Returns:** `{ "success": true, "token": "jwt..." }`
+
+### Login
+
+```
+POST /api/auth/login
+```
+
+**Body:** `{ "username": "..." }`
+
+### Verify Login
+
+```
+POST /api/auth/verify-login
+```
+
+**Body:** `{ "username": "...", "otp": "123456" }`
+
+**Returns:** `{ "success": true, "token": "jwt..." }`
+
+> OTP codes expire in 5 minutes. Max 5 failed attempts before lockout (429).
 
 ---
 
@@ -10,169 +59,39 @@ All responses return JSON with a `success` field. Errors include an `error` or `
 
 ### Fetch Latest Rates
 
-Fetches exchange rates from exchangerate-api.com and saves them as recommendations (not yet applied).
-
 ```
 POST /api/rates/fetch
 ```
 
-**Request:** No body required.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Fetched 5 rate recommendations",
-  "rates": [
-    { "pair": "USD/SGD", "rate": 1.3425, "source": "exchangerate-api.com" },
-    { "pair": "USD/EUR", "rate": 0.9215, "source": "exchangerate-api.com" }
-  ]
-}
-```
-
----
+Fetches rates from exchangerate-api.com and saves as pending recommendations.
 
 ### Get Pending Recommendations
-
-Returns all unapplied rate recommendations with comparison to current active rates.
 
 ```
 GET /api/rates/recommendations
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "recommendations": [
-    {
-      "id": 1,
-      "pair": "USD/SGD",
-      "recommendedRate": 1.3425,
-      "currentRate": 1.3400,
-      "currentDate": "2025-01-31",
-      "difference": 0.0025,
-      "percentChange": 0.19,
-      "source": "exchangerate-api.com",
-      "fetchedAt": "2025-02-01T08:00:00Z"
-    }
-  ]
-}
-```
-
----
-
 ### Get Current Rate
 
-Returns the current active rate and latest recommendation for a currency pair.
-
-```
-GET /api/rates/current?from={FROM}&to={TO}
-```
-
-**Query Parameters:**
-
-| Param | Type | Required | Description |
-|---|---|---|---|
-| `from` | string | Yes | Source currency code (e.g. `USD`) |
-| `to` | string | Yes | Target currency code (e.g. `SGD`) |
-
-**Example:**
 ```
 GET /api/rates/current?from=USD&to=SGD
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "pair": "USD/SGD",
-  "currentRate": 1.3400,
-  "currentDate": "2025-01-31",
-  "recommendedRate": 1.3425,
-  "difference": 0.0025,
-  "percentChange": 0.19
-}
-```
-
----
-
 ### Apply a Recommendation
-
-Applies a pending recommendation as the active exchange rate for today.
 
 ```
 POST /api/rates/apply
 ```
 
-**Request Body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `recommendationId` | integer | Yes | ID of the recommendation to apply |
-| `notes` | string | No | Optional note |
-
-**Example:**
-```json
-{
-  "recommendationId": 1,
-  "notes": "Accepted daily rate"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Rate applied successfully",
-  "rate": 1.3425
-}
-```
-
-**Errors:**
-- `404` — Recommendation not found or already applied
-
----
+**Body:** `{ "recommendationId": 1, "notes": "optional" }`
 
 ### Add Manual Rate
-
-Manually set an exchange rate for today.
 
 ```
 POST /api/rates/manual
 ```
 
-**Request Body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `fromCurrency` | string | Yes | Source currency code (e.g. `USD`) |
-| `toCurrency` | string | Yes | Target currency code (e.g. `SGD`) |
-| `rate` | number | Yes | Exchange rate value |
-| `notes` | string | No | Optional note (e.g. "Bank rate") |
-
-**Example:**
-```json
-{
-  "fromCurrency": "USD",
-  "toCurrency": "SGD",
-  "rate": 1.335,
-  "notes": "Bank rate"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Manual rate added successfully",
-  "newRate": 1.335,
-  "previousRate": 1.3400
-}
-```
-
-**Errors:**
-- `400` — Invalid currency codes
+**Body:** `{ "fromCurrency": "USD", "toCurrency": "SGD", "rate": 1.335, "notes": "optional" }`
 
 ---
 
@@ -180,243 +99,111 @@ POST /api/rates/manual
 
 ### Create Wallet
 
-Creates a new wallet. The authenticated user is automatically added as `owner`.
-
 ```
 POST /api/wallets
 ```
 
-**Request Body:**
-
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | Yes | Wallet name |
-| `description` | string | No | Wallet description |
+| `description` | string | No | Description |
 | `defaultCurrencyCode` | string | No | Default currency (e.g. `SGD`) |
+| `startingBalance` | number | No | Initial balance (default: 0) |
 
-> The wallet creator is determined from the JWT token — no `userId` field needed.
-
-**Example:**
-```json
-{
-  "name": "Personal Wallet",
-  "description": "Daily expenses",
-  "defaultCurrencyCode": "SGD"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "wallet": {
-    "id": 1,
-    "name": "Personal Wallet",
-    "createdAt": "2025-02-01T08:00:00Z"
-  }
-}
-```
-
-**Errors:**
-- `400` — Missing `name`
-
----
+Creator is automatically added as `owner` (from JWT).
 
 ### List Wallets
-
-Returns all wallets the authenticated user belongs to.
 
 ```
 GET /api/wallets
 ```
 
-> The user is determined from the JWT token — no `userId` query parameter needed.
+Returns all wallets the authenticated user belongs to, including `startingBalance` and computed `currentBalance`.
 
-**Response:**
-```json
-{
-  "success": true,
-  "wallets": [
-    {
-      "id": 1,
-      "name": "Personal Wallet",
-      "description": "Daily expenses",
-      "defaultCurrency": "SGD",
-      "myRole": "owner",
-      "createdByName": "Reinaldo",
-      "memberCount": 2,
-      "createdAt": "2025-02-01T08:00:00Z"
-    }
-  ]
-}
+### Edit Wallet
+
+```
+PUT /api/wallets/{walletId}
 ```
 
----
+Owner only. Body fields (all optional): `name`, `description`, `defaultCurrencyCode`, `startingBalance`.
+
+### Delete Wallet
+
+```
+DELETE /api/wallets/{walletId}
+```
+
+Owner only. Cascading delete removes all transactions, members, and recurring transactions.
 
 ### Get Wallet Members
-
-Returns all members of a wallet with their roles. Requires wallet membership.
 
 ```
 GET /api/wallets/{walletId}/members
 ```
 
-**Errors:**
-- `403` — Not a member of this wallet
-- `404` — Wallet not found
-
-**Response:**
-```json
-{
-  "success": true,
-  "walletId": 1,
-  "members": [
-    {
-      "id": 1,
-      "name": "Reinaldo",
-      "email": "reinaldo@email.com",
-      "role": "owner",
-      "joinedAt": "2025-02-01T08:00:00Z"
-    },
-    {
-      "id": 2,
-      "name": "Jane",
-      "email": "jane@email.com",
-      "role": "editor",
-      "joinedAt": "2025-02-01T09:00:00Z"
-    }
-  ]
-}
-```
-
----
+Requires wallet membership.
 
 ### Add Wallet Member
-
-Add a user to a wallet with a specific role. Requires `owner` or `editor` role. Only owners can assign the `owner` role.
 
 ```
 POST /api/wallets/{walletId}/members
 ```
 
-**Request Body:**
+**Body:** `{ "userId": 2, "role": "editor" }`
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `userId` | integer | Yes | User ID to add |
-| `role` | string | No | `owner`, `editor` (default), or `viewer` |
-
-**Example:**
-```json
-{
-  "userId": 2,
-  "role": "editor"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Jane added as editor"
-}
-```
-
-**Errors:**
-- `400` — Missing `userId`
-- `403` — Insufficient permissions (viewer cannot add, non-owner cannot assign owner role)
-- `404` — Wallet or user not found
-- `409` — User is already a member
-
----
+Requires owner or editor role. Only owners can assign `owner` role.
 
 ### Remove Wallet Member
-
-Remove a user from a wallet. Requires `owner` role. Cannot remove the last owner.
 
 ```
 DELETE /api/wallets/{walletId}/members/{userId}
 ```
 
-**Example:**
-```
-DELETE /api/wallets/1/members/2
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Member removed"
-}
-```
-
-**Errors:**
-- `400` — Cannot remove the last owner
-- `403` — Only owners can remove members
-- `404` — Wallet or member not found
+Owner only. Cannot remove the last owner.
 
 ---
 
 ## Transactions
 
-### Add Transaction
+All transaction endpoints require wallet membership. User identity comes from JWT.
 
-Add a transaction to a wallet. The creating user is determined from the JWT token. Requires `owner` or `editor` role.
+### Add Transaction
 
 ```
 POST /api/wallets/{walletId}/transactions
 ```
 
-**Request Body:**
-
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `date` | string | Yes | Date in `YYYY-MM-DD` format |
-| `description` | string | No | Transaction description |
+| `date` | string | Yes | `YYYY-MM-DD` |
+| `description` | string | No | Description |
 | `amount` | number | Yes | Positive number |
-| `currencyCode` | string | Yes | Currency code (e.g. `SGD`, `USD`) |
+| `type` | string | No | `expense` (default) or `income` |
+| `currencyCode` | string | Yes | e.g. `SGD`, `USD` |
 | `categoryId` | integer | No | Category ID |
-| `paymentMethod` | string | No | e.g. `Credit Card`, `Cash`, `Debit` |
+| `paymentMethod` | string | No | e.g. `Credit Card`, `Cash` |
 | `notes` | string | No | Additional notes |
 
-> The transaction creator is determined from the JWT token — no `userId` field needed.
+Requires owner or editor role.
 
-**Example:**
-```json
-{
-  "date": "2025-02-01",
-  "description": "Team lunch",
-  "amount": 45.00,
-  "currencyCode": "SGD",
-  "categoryId": 1,
-  "paymentMethod": "Credit Card"
-}
+### Edit Transaction
+
+```
+PUT /api/wallets/{walletId}/transactions/{transactionId}
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "transactionId": 42,
-  "createdBy": {
-    "id": 1,
-    "name": "Reinaldo"
-  },
-  "createdAt": "2025-02-01T08:30:00Z"
-}
+All fields optional (partial update). Only the transaction creator or wallet owner can edit.
+
+### Delete Transaction
+
+```
+DELETE /api/wallets/{walletId}/transactions/{transactionId}
 ```
 
-**Errors:**
-- `400` — Missing required fields, invalid amount, or invalid currency code
-- `403` — Not a member of this wallet, or user is a `viewer`
-- `404` — Wallet not found
-
----
+Only the transaction creator or wallet owner can delete.
 
 ### List Transactions
-
-List all transactions for a wallet. Requires wallet membership. Each transaction shows who created it.
 
 ```
 GET /api/wallets/{walletId}/transactions
@@ -428,40 +215,92 @@ GET /api/wallets/{walletId}/transactions
 |---|---|---|
 | `from` | string | Start date (`YYYY-MM-DD`) |
 | `to` | string | End date (`YYYY-MM-DD`) |
-| `createdBy` | integer | Filter by user ID who created the transaction |
+| `createdBy` | integer | Filter by creator user ID |
+| `categoryId` | integer | Filter by category |
+| `type` | string | Filter by `income` or `expense` |
 
-**Examples:**
+---
+
+## Categories
+
+### List Categories
+
 ```
-GET /api/wallets/1/transactions
-GET /api/wallets/1/transactions?from=2025-01-01&to=2025-01-31
-GET /api/wallets/1/transactions?createdBy=2
+GET /api/categories?walletId={WALLET_ID}
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "walletId": 1,
-  "transactions": [
-    {
-      "id": 42,
-      "date": "2025-02-01",
-      "description": "Team lunch",
-      "amount": 45.00,
-      "currency": "SGD",
-      "currencySymbol": "S$",
-      "category": "Food & Dining",
-      "paymentMethod": "Credit Card",
-      "notes": null,
-      "createdBy": {
-        "id": 1,
-        "name": "Reinaldo"
-      },
-      "createdAt": "2025-02-01T08:30:00Z"
-    }
-  ]
-}
+Returns global (seeded) categories + custom ones for the specified wallet. Without `walletId`, returns only global categories.
+
+### Create Custom Category
+
 ```
+POST /api/categories
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Category name |
+| `icon` | string | No | Icon identifier |
+| `color` | string | No | Hex color (e.g. `#FF5733`) |
+| `walletId` | integer | No | Wallet to scope this category to |
+| `parentId` | integer | No | Parent category ID for subcategories |
+
+### Edit Custom Category
+
+```
+PUT /api/categories/{categoryId}
+```
+
+Cannot edit default/seeded categories. Body: `name`, `icon`, `color` (all optional).
+
+### Delete Custom Category
+
+```
+DELETE /api/categories/{categoryId}
+```
+
+Cannot delete default/seeded categories.
+
+---
+
+## Recurring Transactions
+
+Recurring transactions auto-create actual transactions daily via cron.
+
+### Create Recurring Transaction
+
+```
+POST /api/wallets/{walletId}/recurring
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `description` | string | No | Description |
+| `amount` | number | Yes | Positive number |
+| `type` | string | No | `expense` (default) or `income` |
+| `currencyCode` | string | Yes | Currency code |
+| `categoryId` | integer | No | Category ID |
+| `paymentMethod` | string | No | Payment method |
+| `notes` | string | No | Notes |
+| `frequency` | string | Yes | `daily`, `weekly`, `biweekly`, `monthly`, `yearly` |
+| `startDate` | string | Yes | Start date (`YYYY-MM-DD`) |
+| `endDate` | string | No | End date (omit for indefinite) |
+
+Requires owner or editor role.
+
+### List Recurring Transactions
+
+```
+GET /api/wallets/{walletId}/recurring
+```
+
+### Deactivate Recurring Transaction
+
+```
+DELETE /api/wallets/{walletId}/recurring/{recurringId}
+```
+
+Only the creator or wallet owner can deactivate.
 
 ---
 
@@ -469,63 +308,40 @@ GET /api/wallets/1/transactions?createdBy=2
 
 ### Spending Report
 
-Get a spending report for a wallet with all amounts converted to a target currency. Requires wallet membership. Includes aggregation by month, category, and user.
-
 ```
 GET /api/wallets/{walletId}/reports/spending
 ```
 
-**Query Parameters:**
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `currency` | string | `SGD` | Target currency for conversion |
+| `from` | string | — | Start date |
+| `to` | string | — | End date |
 
-| Param | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `currency` | string | No | `SGD` | Target currency for conversion |
-| `from` | string | No | — | Start date (`YYYY-MM-DD`) |
-| `to` | string | No | — | End date (`YYYY-MM-DD`) |
+**Summary includes:**
+- `totalIncome` / `totalExpense` / `netCashFlow`
+- `startingBalance` / `currentBalance`
+- `monthlyCashFlow` — per-month income & expense breakdown
+- `monthlyTotals` — per-month net amounts
+- `categoryTotals` — expense totals by category
+- `userTotals` — totals by user
 
-**Example:**
+---
+
+## Export
+
+### Export Transactions as CSV
+
 ```
-GET /api/wallets/1/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31
+GET /api/wallets/{walletId}/export/csv
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "walletId": 1,
-  "targetCurrency": "SGD",
-  "transactions": [
-    {
-      "id": 42,
-      "date": "2025-02-01",
-      "description": "Team lunch",
-      "originalAmount": 45.00,
-      "originalCurrency": "SGD",
-      "convertedAmount": 45.00,
-      "exchangeRate": 1.0,
-      "category": "Food & Dining",
-      "paymentMethod": "Credit Card",
-      "createdBy": {
-        "id": 1,
-        "name": "Reinaldo"
-      }
-    }
-  ],
-  "summary": {
-    "totalTransactions": 1,
-    "totalAmount": 45.00,
-    "monthlyTotals": {
-      "2025-02": 45.00
-    },
-    "categoryTotals": {
-      "Food & Dining": 45.00
-    },
-    "userTotals": {
-      "Reinaldo": 45.00
-    }
-  }
-}
-```
+| Param | Type | Description |
+|---|---|---|
+| `from` | string | Start date (optional) |
+| `to` | string | End date (optional) |
+
+Returns a downloadable CSV file with columns: Date, Type, Description, Amount, Currency, Category, Payment Method, Notes, Created By.
 
 ---
 
@@ -542,7 +358,7 @@ GET /api/wallets/1/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31
 
 ---
 
-## Categories
+## Default Categories
 
 | ID | Name |
 |---|---|
@@ -555,21 +371,21 @@ GET /api/wallets/1/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31
 | 7 | Travel |
 | 8 | Others |
 
+Custom categories can be added per wallet via `POST /api/categories`.
+
 ---
 
 ## Wallet Roles
 
-| Role | View Transactions | Add Transactions | Add Members | Remove Members |
-|---|---|---|---|---|
-| `owner` | Yes | Yes | Yes | Yes |
-| `editor` | Yes | Yes | Yes | No |
-| `viewer` | Yes | No | No | No |
+| Role | View | Add Transactions | Add Members | Remove Members | Edit/Delete Wallet |
+|---|---|---|---|---|---|
+| `owner` | Yes | Yes | Yes | Yes | Yes |
+| `editor` | Yes | Yes | Yes | No | No |
+| `viewer` | Yes | No | No | No | No |
 
 ---
 
 ## Error Responses
-
-All errors follow this format:
 
 ```json
 {
@@ -581,14 +397,17 @@ All errors follow this format:
 | Status | Meaning |
 |---|---|
 | `400` | Bad request — missing or invalid parameters |
-| `403` | Forbidden — user lacks permission |
+| `401` | Unauthorized — missing or invalid JWT |
+| `403` | Forbidden — insufficient permissions |
 | `404` | Not found — resource doesn't exist |
-| `409` | Conflict — duplicate (e.g. user already a member) |
-| `429` | Too many requests — OTP attempt limit exceeded |
+| `409` | Conflict — duplicate entry |
+| `429` | Too many requests — OTP attempt limit |
 | `500` | Server error |
 
 ---
 
 ## Cron Schedule
 
-Exchange rates are automatically fetched daily at **08:00 UTC** via Cloudflare Cron Trigger. Fetched rates are saved as recommendations and must be applied manually or via the `/api/rates/apply` endpoint.
+Daily at **08:00 UTC** via Cloudflare Cron Trigger:
+1. Fetches exchange rates from exchangerate-api.com (saved as recommendations)
+2. Processes due recurring transactions (creates actual transactions)

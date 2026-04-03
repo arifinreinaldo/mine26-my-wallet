@@ -19,7 +19,7 @@ export async function checkWalletAccess(sql, walletId, userId) {
  * Create a new wallet. The creator (authenticated user) is automatically added as owner.
  */
 export async function handleCreateWallet(sql, body, authUserId) {
-  const { name, description, defaultCurrencyCode } = body;
+  const { name, description, defaultCurrencyCode, startingBalance } = body;
 
   if (!name) {
     return {
@@ -36,9 +36,11 @@ export async function handleCreateWallet(sql, body, authUserId) {
     defaultCurrencyId = curr?.id || null;
   }
 
+  const balance = typeof startingBalance === 'number' ? startingBalance : 0;
+
   const [wallet] = await sql`
-    INSERT INTO wallets (name, description, default_currency_id, created_by_user_id)
-    VALUES (${name}, ${description || null}, ${defaultCurrencyId}, ${authUserId})
+    INSERT INTO wallets (name, description, default_currency_id, created_by_user_id, starting_balance)
+    VALUES (${name}, ${description || null}, ${defaultCurrencyId}, ${authUserId}, ${balance})
     RETURNING id, name, created_at
   `;
 
@@ -54,6 +56,7 @@ export async function handleCreateWallet(sql, body, authUserId) {
       wallet: {
         id: wallet.id,
         name: wallet.name,
+        startingBalance: balance,
         createdAt: wallet.created_at,
       },
     },
@@ -69,11 +72,16 @@ export async function handleGetWallets(sql, authUserId) {
       w.id,
       w.name,
       w.description,
+      w.starting_balance,
       c.code AS default_currency,
       wu.role AS my_role,
       w.created_at,
       u.name AS created_by_name,
-      (SELECT COUNT(*) FROM wallet_users WHERE wallet_id = w.id) AS member_count
+      (SELECT COUNT(*) FROM wallet_users WHERE wallet_id = w.id) AS member_count,
+      COALESCE((
+        SELECT SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END)
+        FROM transactions t WHERE t.wallet_id = w.id
+      ), 0) AS transaction_net
     FROM wallets w
     JOIN wallet_users wu ON wu.wallet_id = w.id AND wu.user_id = ${authUserId}
     LEFT JOIN currencies c ON w.default_currency_id = c.id
@@ -89,12 +97,71 @@ export async function handleGetWallets(sql, authUserId) {
         name: w.name,
         description: w.description,
         defaultCurrency: w.default_currency,
+        startingBalance: parseFloat(w.starting_balance),
+        currentBalance: parseFloat(w.starting_balance) + parseFloat(w.transaction_net),
         myRole: w.my_role,
         createdByName: w.created_by_name,
         memberCount: parseInt(w.member_count),
         createdAt: w.created_at,
       })),
     },
+  };
+}
+
+/**
+ * Edit a wallet (owner only)
+ */
+export async function handleEditWallet(sql, walletId, body, authUserId) {
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (access.role !== 'owner') {
+    return { status: 403, body: { success: false, message: 'Only owners can edit wallets' } };
+  }
+
+  const { name, description, defaultCurrencyCode, startingBalance } = body;
+
+  let defaultCurrencyId = undefined;
+  if (defaultCurrencyCode) {
+    const [curr] = await sql`SELECT id FROM currencies WHERE code = ${defaultCurrencyCode}`;
+    if (!curr) {
+      return { status: 400, body: { success: false, message: 'Invalid currency code' } };
+    }
+    defaultCurrencyId = curr.id;
+  }
+
+  const [updated] = await sql`
+    UPDATE wallets SET
+      name = COALESCE(${name || null}, name),
+      description = COALESCE(${description !== undefined ? description : null}, description),
+      default_currency_id = COALESCE(${defaultCurrencyId || null}, default_currency_id),
+      starting_balance = COALESCE(${typeof startingBalance === 'number' ? startingBalance : null}, starting_balance)
+    WHERE id = ${walletId}
+    RETURNING id, name
+  `;
+
+  return {
+    body: { success: true, message: 'Wallet updated', wallet: { id: updated.id, name: updated.name } },
+  };
+}
+
+/**
+ * Delete a wallet (owner only)
+ */
+export async function handleDeleteWallet(sql, walletId, authUserId) {
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (access.role !== 'owner') {
+    return { status: 403, body: { success: false, message: 'Only owners can delete wallets' } };
+  }
+
+  await sql`DELETE FROM wallets WHERE id = ${walletId}`;
+
+  return {
+    body: { success: true, message: 'Wallet deleted' },
   };
 }
 

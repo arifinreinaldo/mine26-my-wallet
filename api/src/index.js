@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { handleRoute } from './router.js';
 import { handleFetchRates } from './handlers/rates.js';
+import { processRecurringTransactions } from './handlers/recurring.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,6 +29,16 @@ export default {
       const result = await handleRoute(sql, request.method, url, request, env);
 
       if (result) {
+        // CSV export returns { csv, filename } instead of { status, body }
+        if (result.csv) {
+          return new Response(result.csv, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'text/csv',
+              'Content-Disposition': `attachment; filename="${result.filename}"`,
+            },
+          });
+        }
         return jsonResponse(result.body, result.status || 200);
       }
 
@@ -44,7 +55,13 @@ export default {
       await handleFetchRates(sql);
       console.log('Scheduled rate fetch completed');
     } catch (error) {
-      console.error('Scheduled fetch failed:', error);
+      console.error('Scheduled rate fetch failed:', error);
+    }
+    try {
+      const count = await processRecurringTransactions(sql);
+      console.log(`Processed ${count} recurring transactions`);
+    } catch (error) {
+      console.error('Recurring transactions processing failed:', error);
     }
   },
 };

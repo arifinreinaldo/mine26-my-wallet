@@ -4,7 +4,7 @@ import { checkWalletAccess } from './wallets.js';
  * Add a transaction to a wallet
  */
 export async function handleAddTransaction(sql, walletId, body, authUserId) {
-  const { date, description, amount, currencyCode, categoryId, paymentMethod, notes } = body;
+  const { date, description, amount, currencyCode, categoryId, paymentMethod, notes, type } = body;
 
   if (!date || amount == null || !currencyCode) {
     return {
@@ -19,6 +19,8 @@ export async function handleAddTransaction(sql, walletId, body, authUserId) {
       body: { success: false, message: 'amount must be a positive number' },
     };
   }
+
+  const txType = type === 'income' ? 'income' : 'expense';
 
   // Verify user is a member with editor or owner role
   const access = await checkWalletAccess(sql, walletId, authUserId);
@@ -46,9 +48,9 @@ export async function handleAddTransaction(sql, walletId, body, authUserId) {
 
   const [transaction] = await sql`
     INSERT INTO transactions
-    (wallet_id, date, description, amount, currency_id, category_id, payment_method, notes, created_by_user_id)
+    (wallet_id, date, description, amount, type, currency_id, category_id, payment_method, notes, created_by_user_id)
     VALUES (
-      ${walletId}, ${date}, ${description || null}, ${amount},
+      ${walletId}, ${date}, ${description || null}, ${amount}, ${txType},
       ${currency.id}, ${categoryId || null}, ${paymentMethod || null},
       ${notes || null}, ${authUserId}
     )
@@ -61,12 +63,115 @@ export async function handleAddTransaction(sql, walletId, body, authUserId) {
     body: {
       success: true,
       transactionId: transaction.id,
+      type: txType,
       createdBy: {
         id: authUserId,
         name: user.name,
       },
       createdAt: transaction.created_at,
     },
+  };
+}
+
+/**
+ * Edit a transaction (owner/editor who created it, or wallet owner)
+ */
+export async function handleEditTransaction(sql, walletId, transactionId, body, authUserId) {
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (!access.role) {
+    return { status: 403, body: { success: false, message: 'You are not a member of this wallet' } };
+  }
+  if (access.role === 'viewer') {
+    return { status: 403, body: { success: false, message: 'Viewers cannot edit transactions' } };
+  }
+
+  // Verify transaction exists and belongs to this wallet
+  const [existing] = await sql`
+    SELECT id, created_by_user_id FROM transactions
+    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+  `;
+
+  if (!existing) {
+    return { status: 404, body: { success: false, message: 'Transaction not found' } };
+  }
+
+  // Only the creator or a wallet owner can edit
+  if (existing.created_by_user_id !== authUserId && access.role !== 'owner') {
+    return { status: 403, body: { success: false, message: 'You can only edit your own transactions' } };
+  }
+
+  const { date, description, amount, currencyCode, categoryId, paymentMethod, notes, type } = body;
+
+  if (amount != null && (typeof amount !== 'number' || amount <= 0)) {
+    return { status: 400, body: { success: false, message: 'amount must be a positive number' } };
+  }
+
+  // Resolve currency if provided
+  let currencyId = undefined;
+  if (currencyCode) {
+    const [currency] = await sql`SELECT id FROM currencies WHERE code = ${currencyCode}`;
+    if (!currency) {
+      return { status: 400, body: { success: false, message: 'Invalid currency code' } };
+    }
+    currencyId = currency.id;
+  }
+
+  const txType = type === 'income' ? 'income' : type === 'expense' ? 'expense' : undefined;
+
+  const [updated] = await sql`
+    UPDATE transactions SET
+      date = COALESCE(${date || null}, date),
+      description = COALESCE(${description !== undefined ? description : null}, description),
+      amount = COALESCE(${amount || null}, amount),
+      type = COALESCE(${txType || null}, type),
+      currency_id = COALESCE(${currencyId || null}, currency_id),
+      category_id = COALESCE(${categoryId || null}, category_id),
+      payment_method = COALESCE(${paymentMethod !== undefined ? paymentMethod : null}, payment_method),
+      notes = COALESCE(${notes !== undefined ? notes : null}, notes)
+    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+    RETURNING id
+  `;
+
+  return {
+    body: { success: true, message: 'Transaction updated', transactionId: updated.id },
+  };
+}
+
+/**
+ * Delete a transaction (owner/editor who created it, or wallet owner)
+ */
+export async function handleDeleteTransaction(sql, walletId, transactionId, authUserId) {
+  const access = await checkWalletAccess(sql, walletId, authUserId);
+  if (!access.exists) {
+    return { status: 404, body: { success: false, message: 'Wallet not found' } };
+  }
+  if (!access.role) {
+    return { status: 403, body: { success: false, message: 'You are not a member of this wallet' } };
+  }
+  if (access.role === 'viewer') {
+    return { status: 403, body: { success: false, message: 'Viewers cannot delete transactions' } };
+  }
+
+  const [existing] = await sql`
+    SELECT id, created_by_user_id FROM transactions
+    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+  `;
+
+  if (!existing) {
+    return { status: 404, body: { success: false, message: 'Transaction not found' } };
+  }
+
+  if (existing.created_by_user_id !== authUserId && access.role !== 'owner') {
+    return { status: 403, body: { success: false, message: 'You can only delete your own transactions' } };
+  }
+
+  await sql`DELETE FROM transactions WHERE id = ${transactionId}`;
+
+  return {
+    body: { success: true, message: 'Transaction deleted' },
   };
 }
 
@@ -86,6 +191,8 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
   const fromDate = searchParams.get('from');
   const toDate = searchParams.get('to');
   const createdBy = searchParams.get('createdBy');
+  const categoryId = searchParams.get('categoryId');
+  const type = searchParams.get('type');
 
   const transactions = await sql`
     SELECT
@@ -93,9 +200,11 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
       t.date,
       t.description,
       t.amount,
+      t.type,
       c.code AS currency,
       c.symbol AS currency_symbol,
       cat.name AS category,
+      cat.id AS category_id,
       t.payment_method,
       t.notes,
       u.id AS created_by_id,
@@ -109,6 +218,8 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
       AND (${fromDate}::date IS NULL OR t.date >= ${fromDate}::date)
       AND (${toDate}::date IS NULL OR t.date <= ${toDate}::date)
       AND (${createdBy}::integer IS NULL OR t.created_by_user_id = ${createdBy}::integer)
+      AND (${categoryId}::integer IS NULL OR t.category_id = ${categoryId}::integer)
+      AND (${type} IS NULL OR t.type = ${type})
     ORDER BY t.date DESC, t.created_at DESC
   `;
 
@@ -121,9 +232,11 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
         date: t.date,
         description: t.description,
         amount: parseFloat(t.amount),
+        type: t.type,
         currency: t.currency,
         currencySymbol: t.currency_symbol,
         category: t.category,
+        categoryId: t.category_id,
         paymentMethod: t.payment_method,
         notes: t.notes,
         createdBy: {

@@ -14,6 +14,8 @@ import {
 import {
   handleCreateWallet,
   handleGetWallets,
+  handleEditWallet,
+  handleDeleteWallet,
   handleGetWalletMembers,
   handleAddWalletMember,
   handleRemoveWalletMember,
@@ -21,10 +23,27 @@ import {
 
 import {
   handleAddTransaction,
+  handleEditTransaction,
+  handleDeleteTransaction,
   handleGetTransactions,
 } from './handlers/transactions.js';
 
 import { handleGetSpendingReport } from './handlers/reports.js';
+
+import {
+  handleGetCategories,
+  handleCreateCategory,
+  handleEditCategory,
+  handleDeleteCategory,
+} from './handlers/categories.js';
+
+import {
+  handleCreateRecurring,
+  handleGetRecurring,
+  handleDeleteRecurring,
+} from './handlers/recurring.js';
+
+import { handleExportCsv } from './handlers/export.js';
 
 import {
   handleCheckUsername,
@@ -79,9 +98,17 @@ const protectedRoutes = [
   { method: 'GET', path: '/api/users/me', handler: (sql, _p, _u, _b, _e, user) => handleGetMe(sql, user.userId) },
   { method: 'GET', path: '/api/users/search', handler: (sql, _p, url) => handleSearchUser(sql, url.searchParams.get('username')) },
 
+  // Categories
+  { method: 'GET', path: '/api/categories', handler: (sql, _p, url, _b, _e, user) => handleGetCategories(sql, url.searchParams, user.userId) },
+  { method: 'POST', path: '/api/categories', handler: (sql, _p, _u, body, _e, user) => handleCreateCategory(sql, body, user.userId) },
+  { method: 'PUT', path: '/api/categories/:categoryId', handler: (sql, params, _u, body, _e, user) => handleEditCategory(sql, params.categoryId, body, user.userId) },
+  { method: 'DELETE', path: '/api/categories/:categoryId', handler: (sql, params, _u, _b, _e, user) => handleDeleteCategory(sql, params.categoryId, user.userId) },
+
   // Wallets
   { method: 'POST', path: '/api/wallets', handler: (sql, _p, _u, body, _e, user) => handleCreateWallet(sql, body, user.userId) },
   { method: 'GET', path: '/api/wallets', handler: (sql, _p, _u, _b, _e, user) => handleGetWallets(sql, user.userId) },
+  { method: 'PUT', path: '/api/wallets/:walletId', handler: (sql, params, _u, body, _e, user) => handleEditWallet(sql, params.walletId, body, user.userId) },
+  { method: 'DELETE', path: '/api/wallets/:walletId', handler: (sql, params, _u, _b, _e, user) => handleDeleteWallet(sql, params.walletId, user.userId) },
   { method: 'GET', path: '/api/wallets/:walletId/members', handler: (sql, params, _u, _b, _e, user) => handleGetWalletMembers(sql, params.walletId, user.userId) },
   { method: 'POST', path: '/api/wallets/:walletId/members', handler: (sql, params, _u, body, _e, user) => handleAddWalletMember(sql, params.walletId, body, user.userId) },
   { method: 'DELETE', path: '/api/wallets/:walletId/members/:userId', handler: (sql, params, _u, _b, _e, user) => handleRemoveWalletMember(sql, params.walletId, params.userId, user.userId) },
@@ -89,9 +116,19 @@ const protectedRoutes = [
   // Transactions (wallet-scoped)
   { method: 'POST', path: '/api/wallets/:walletId/transactions', handler: (sql, params, _u, body, _e, user) => handleAddTransaction(sql, params.walletId, body, user.userId) },
   { method: 'GET', path: '/api/wallets/:walletId/transactions', handler: (sql, params, url, _b, _e, user) => handleGetTransactions(sql, params.walletId, url.searchParams, user.userId) },
+  { method: 'PUT', path: '/api/wallets/:walletId/transactions/:transactionId', handler: (sql, params, _u, body, _e, user) => handleEditTransaction(sql, params.walletId, params.transactionId, body, user.userId) },
+  { method: 'DELETE', path: '/api/wallets/:walletId/transactions/:transactionId', handler: (sql, params, _u, _b, _e, user) => handleDeleteTransaction(sql, params.walletId, params.transactionId, user.userId) },
+
+  // Recurring transactions (wallet-scoped)
+  { method: 'POST', path: '/api/wallets/:walletId/recurring', handler: (sql, params, _u, body, _e, user) => handleCreateRecurring(sql, params.walletId, body, user.userId) },
+  { method: 'GET', path: '/api/wallets/:walletId/recurring', handler: (sql, params, _u, _b, _e, user) => handleGetRecurring(sql, params.walletId, user.userId) },
+  { method: 'DELETE', path: '/api/wallets/:walletId/recurring/:recurringId', handler: (sql, params, _u, _b, _e, user) => handleDeleteRecurring(sql, params.walletId, params.recurringId, user.userId) },
 
   // Reports (wallet-scoped)
   { method: 'GET', path: '/api/wallets/:walletId/reports/spending', handler: (sql, params, url, _b, _e, user) => handleGetSpendingReport(sql, params.walletId, url.searchParams, user.userId) },
+
+  // Export (wallet-scoped)
+  { method: 'GET', path: '/api/wallets/:walletId/export/csv', handler: (sql, params, url, _b, _e, user) => handleExportCsv(sql, params.walletId, url.searchParams, user.userId) },
 ];
 
 export async function handleRoute(sql, method, url, request, env) {
