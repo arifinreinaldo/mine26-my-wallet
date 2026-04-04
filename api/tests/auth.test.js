@@ -123,6 +123,22 @@ describe('handleVerifyRegistration', () => {
     }, { JWT_SECRET: 'test' });
     expect(result.status).toBe(429);
   });
+
+  it('returns JWT token on successful OTP verification', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '0' }] }, // not locked
+      { match: 'SELECT id FROM otp_codes', result: [{ id: 1 }] }, // valid OTP
+      { match: 'UPDATE otp_codes SET used', result: [] },
+      { match: 'UPDATE users SET verified', result: [] },
+      { match: 'SELECT id, username FROM users', result: [{ id: 42, username: 'john' }] },
+    ]);
+    const result = await handleVerifyRegistration(sql, {
+      username: 'john', otp: '123456',
+    }, { JWT_SECRET: 'test-secret-for-jwt' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.token).toBeDefined();
+    expect(result.body.token.split('.')).toHaveLength(3);
+  });
 });
 
 describe('handleVerifyLogin', () => {
@@ -140,5 +156,19 @@ describe('handleVerifyLogin', () => {
       username: 'john', otp: '123456',
     }, { JWT_SECRET: 'test' });
     expect(result.status).toBe(429);
+  });
+
+  it('returns JWT token on successful login OTP', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '0' }] },
+      { match: 'SELECT id FROM otp_codes', result: [{ id: 1 }] },
+      { match: 'UPDATE otp_codes SET used', result: [] },
+      { match: 'SELECT id, username FROM users', result: [{ id: 42, username: 'john' }] },
+    ]);
+    const result = await handleVerifyLogin(sql, {
+      username: 'john', otp: '123456',
+    }, { JWT_SECRET: 'test-secret-for-jwt' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.token).toBeDefined();
   });
 });

@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { createMockSql } from './helpers/mockSql.js';
 import {
   handleCreateRecurring,
+  handleGetRecurring,
   handleDeleteRecurring,
+  processRecurringTransactions,
   calculateNextDueDate,
 } from '../src/handlers/recurring.js';
 
@@ -44,6 +46,69 @@ describe('handleDeleteRecurring', () => {
     // Verify no hard DELETE
     const hardDelete = sql.calls.find(c => c.query.includes('DELETE FROM'));
     expect(hardDelete).toBeUndefined();
+  });
+});
+
+describe('handleGetRecurring', () => {
+  it('returns 404 for non-existent wallet', async () => {
+    const sql = createMockSql([]);
+    const result = await handleGetRecurring(sql, 999, 1);
+    expect(result.status).toBe(404);
+  });
+
+  it('returns 403 for non-members', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT w.id', result: [{ id: 1, role: null }] },
+    ]);
+    const result = await handleGetRecurring(sql, 1, 999);
+    expect(result.status).toBe(403);
+  });
+
+  it('returns recurring transactions list', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT w.id', result: [{ id: 1, role: 'viewer' }] },
+      { match: 'FROM recurring_transactions', result: [{
+        id: 1, description: 'Rent', amount: '2000.00', type: 'expense',
+        frequency: 'monthly', currency: 'SGD', category_id: 1, category_name: 'Bills',
+        payment_method: 'Transfer', notes: null,
+        start_date: '2025-01-01', end_date: null, next_due_date: '2025-02-01',
+        is_active: true, created_by_id: 1, created_by_name: 'John',
+        created_at: '2025-01-01',
+      }] },
+    ]);
+    const result = await handleGetRecurring(sql, 1, 1);
+    expect(result.body.success).toBe(true);
+    expect(result.body.recurringTransactions).toHaveLength(1);
+    expect(result.body.recurringTransactions[0].amount).toBe(2000);
+    expect(result.body.recurringTransactions[0].frequency).toBe('monthly');
+  });
+});
+
+describe('processRecurringTransactions', () => {
+  it('processes due entries and creates transactions', async () => {
+    const sql = createMockSql([
+      { match: 'FROM recurring_transactions', result: [{
+        id: 1, wallet_id: 1, next_due_date: '2025-01-01', description: 'Rent',
+        amount: '2000', type: 'expense', currency_id: 1, category_id: 1,
+        payment_method: 'Transfer', notes: null, created_by_user_id: 1,
+        frequency: 'monthly', end_date: null,
+      }] },
+      { match: 'INSERT INTO transactions', result: [] },
+      { match: 'UPDATE recurring_transactions', result: [] },
+    ]);
+
+    const count = await processRecurringTransactions(sql);
+    expect(count).toBe(1);
+    expect(sql.callsTo('INSERT INTO transactions')).toHaveLength(1);
+    expect(sql.callsTo('UPDATE recurring_transactions')).toHaveLength(1);
+  });
+
+  it('returns 0 when no entries are due', async () => {
+    const sql = createMockSql([
+      { match: 'FROM recurring_transactions', result: [] },
+    ]);
+    const count = await processRecurringTransactions(sql);
+    expect(count).toBe(0);
   });
 });
 

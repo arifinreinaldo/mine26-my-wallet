@@ -60,4 +60,35 @@ describe('handleGetSpendingReport', () => {
     // Income should not appear in category totals
     expect(result.body.summary.categoryTotals['Salary']).toBeUndefined();
   });
+
+  it('groups null category as Uncategorized', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'SELECT id FROM currencies', result: [{ id: 1 }] },
+      { match: 'SELECT starting_balance', result: [{ starting_balance: '0' }] },
+      { match: 'FROM transactions', result: [
+        { id: 1, date: '2025-01-15', description: 'Misc', amount: '50.00', type: 'expense', currency_code: 'SGD', currency_id: 1, category_name: null, payment_method: null, created_by_id: 1, created_by_name: 'J' },
+      ] },
+    ]);
+    const params = new URLSearchParams({ currency: 'SGD' });
+    const result = await handleGetSpendingReport(sql, 1, params, 1);
+    expect(result.body.summary.categoryTotals['Uncategorized']).toBe(50);
+  });
+
+  it('generates monthly cash flow by month', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'SELECT id FROM currencies', result: [{ id: 1 }] },
+      { match: 'SELECT starting_balance', result: [{ starting_balance: '0' }] },
+      { match: 'FROM transactions', result: [
+        { id: 1, date: '2025-01-15', description: 'Salary', amount: '5000.00', type: 'income', currency_code: 'SGD', currency_id: 1, category_name: null, payment_method: null, created_by_id: 1, created_by_name: 'J' },
+        { id: 2, date: '2025-01-20', description: 'Rent', amount: '2000.00', type: 'expense', currency_code: 'SGD', currency_id: 1, category_name: 'Bills', payment_method: null, created_by_id: 1, created_by_name: 'J' },
+        { id: 3, date: '2025-02-15', description: 'Salary', amount: '5000.00', type: 'income', currency_code: 'SGD', currency_id: 1, category_name: null, payment_method: null, created_by_id: 1, created_by_name: 'J' },
+      ] },
+    ]);
+    const params = new URLSearchParams({ currency: 'SGD' });
+    const result = await handleGetSpendingReport(sql, 1, params, 1);
+    expect(result.body.summary.monthlyCashFlow['2025-01']).toEqual({ income: 5000, expense: 2000 });
+    expect(result.body.summary.monthlyCashFlow['2025-02']).toEqual({ income: 5000, expense: 0 });
+  });
 });

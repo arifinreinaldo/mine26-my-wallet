@@ -3,6 +3,7 @@ import { createMockSql } from './helpers/mockSql.js';
 import {
   checkWalletAccess,
   handleCreateWallet,
+  handleGetWallets,
   handleEditWallet,
   handleDeleteWallet,
   handleGetWalletMembers,
@@ -129,6 +130,51 @@ describe('handleRemoveWalletMember', () => {
     const result = await handleRemoveWalletMember(sql, 1, 1, 1);
     expect(result.status).toBe(400);
     expect(result.body.message).toContain('last owner');
+  });
+});
+
+describe('handleGetWallets', () => {
+  it('returns empty array when user has no wallets', async () => {
+    const sql = createMockSql([]);
+    const result = await handleGetWallets(sql, 1);
+    expect(result.body.success).toBe(true);
+    expect(result.body.wallets).toEqual([]);
+  });
+
+  it('computes currentBalance from startingBalance + income - expense', async () => {
+    const sql = createMockSql([
+      { match: 'FROM wallets w', result: [{
+        id: 1, name: 'Test', description: null, starting_balance: '1000.00',
+        default_currency_id: 1, default_currency: 'SGD', my_role: 'owner',
+        created_at: '2025-01-01', created_by_name: 'John', member_count: '1',
+      }] },
+      { match: 'FROM transactions', result: [
+        { wallet_id: 1, currency_id: 1, net: '3000.00' }, // income - expenses
+      ] },
+    ]);
+    const result = await handleGetWallets(sql, 1);
+    expect(result.body.wallets).toHaveLength(1);
+    expect(result.body.wallets[0].startingBalance).toBe(1000);
+    expect(result.body.wallets[0].currentBalance).toBe(4000); // 1000 + 3000
+  });
+
+  it('converts cross-currency transactions via exchange rates', async () => {
+    const sql = createMockSql([
+      { match: 'FROM wallets w', result: [{
+        id: 1, name: 'Test', description: null, starting_balance: '0',
+        default_currency_id: 1, default_currency: 'SGD', my_role: 'owner',
+        created_at: '2025-01-01', created_by_name: 'John', member_count: '1',
+      }] },
+      { match: 'FROM transactions', result: [
+        { wallet_id: 1, currency_id: 2, net: '100.00' }, // 100 USD
+      ] },
+      // Exchange rate: USD(2) to SGD(1) = 1.35
+      { match: 'unnest', result: [
+        { from_id: 2, to_id: 1, rate: '1.35', from_currency_id: 2, to_currency_id: 1 },
+      ] },
+    ]);
+    const result = await handleGetWallets(sql, 1);
+    expect(result.body.wallets[0].currentBalance).toBe(135); // 100 * 1.35
   });
 });
 

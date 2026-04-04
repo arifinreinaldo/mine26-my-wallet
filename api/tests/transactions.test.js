@@ -150,6 +150,18 @@ describe('handleGetTransactions', () => {
     expect(selectCall.query).toContain('deleted_at IS NULL');
   });
 
+  it('returns 400 for invalid currency code', async () => {
+    const sql = createMockSql([
+      walletAccess('editor'),
+      { match: 'SELECT id FROM currencies', result: [] }, // currency not found
+    ]);
+    const result = await handleAddTransaction(sql, 1, {
+      date: '2025-01-01', amount: 10, currencyCode: 'FAKE',
+    }, 1);
+    expect(result.status).toBe(400);
+    expect(result.body.message).toContain('Invalid currency');
+  });
+
   it('returns correct response shape', async () => {
     const sql = createMockSql([
       walletAccess('viewer'),

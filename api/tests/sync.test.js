@@ -173,4 +173,73 @@ describe('handlePullSync', () => {
     const result = await handlePullSync(sql, 1, params, 999);
     expect(result.status).toBe(403);
   });
+
+  it('full sync without since returns all transactions', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'SELECT NOW()', result: [{ now: '2025-02-01T00:00:00Z' }] },
+      { match: 'FROM transactions', result: [{
+        id: 1, client_id: 'uuid-1', date: '2025-01-01', description: 'Test',
+        amount: '10.00', type: 'expense', currency_code: 'SGD', category_id: null,
+        category_name: null, payment_method: null, notes: null,
+        created_by_user_id: 1, created_by_name: 'John',
+        created_at: '2025-01-01', updated_at: '2025-01-01', deleted_at: null,
+      }] },
+    ]);
+    // No 'since' param — full sync
+    const params = new URLSearchParams();
+    const result = await handlePullSync(sql, 1, params, 1);
+    expect(result.body.success).toBe(true);
+    expect(result.body.changes).toHaveLength(1);
+    // Verify the query does NOT have the 'since' filter
+    const txQuery = sql.callsTo('FROM transactions');
+    expect(txQuery).toHaveLength(1);
+    expect(txQuery[0].query).not.toContain('updated_at >');
+  });
+
+  it('includes soft-deleted records in pull response', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'SELECT NOW()', result: [{ now: '2025-02-01T00:00:00Z' }] },
+      { match: 'FROM transactions', result: [{
+        id: 1, client_id: 'uuid-del', date: '2025-01-01', description: 'Deleted',
+        amount: '10.00', type: 'expense', currency_code: 'SGD', category_id: null,
+        category_name: null, payment_method: null, notes: null,
+        created_by_user_id: 1, created_by_name: 'John',
+        created_at: '2025-01-01', updated_at: '2025-01-15',
+        deleted_at: '2025-01-15T10:00:00Z',
+      }] },
+    ]);
+    const params = new URLSearchParams({ since: '2025-01-01T00:00:00Z' });
+    const result = await handlePullSync(sql, 1, params, 1);
+    expect(result.body.changes[0].deletedAt).toBe('2025-01-15T10:00:00Z');
+    // Pull query should NOT filter deleted_at IS NULL (unlike regular list)
+    const txQuery = sql.callsTo('FROM transactions');
+    expect(txQuery[0].query).not.toContain('deleted_at IS NULL');
+  });
+});
+
+describe('handlePushSync — LWW conflict', () => {
+  it('update returns conflict when server is newer', async () => {
+    const sql = createMockSql([
+      walletAccess('editor'),
+      { match: 'SELECT id, code FROM currencies', result: [] },
+      // UPDATE returns nothing (server was newer, WHERE updated_at < failed)
+      { match: 'UPDATE transactions SET', result: [] },
+      // Exists check — server has newer updated_at
+      { match: 'SELECT id, updated_at, deleted_at FROM transactions', result: [{
+        id: 1, updated_at: '2025-01-20T00:00:00Z', deleted_at: null,
+      }] },
+    ]);
+    const result = await handlePushSync(sql, 1, {
+      changes: [{
+        clientId: '550e8400-e29b-41d4-a716-446655440001',
+        operation: 'update',
+        data: { amount: 50 },
+        clientUpdatedAt: '2025-01-10T00:00:00Z', // older than server
+      }],
+    }, 1);
+    expect(result.body.results[0].status).toBe('conflict');
+    expect(result.body.results[0].serverUpdatedAt).toBe('2025-01-20T00:00:00Z');
+  });
 });
