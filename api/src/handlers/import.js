@@ -62,6 +62,29 @@ export async function handleImport(sql, walletId, body, authUserId) {
     categoryMap[c.name.toLowerCase()] = c.id;
   }
 
+  // Collect all unique category names that need resolving, auto-create missing ones
+  const uniqueCategoryNames = [...new Set(
+    transactions.map(t => t.categoryName).filter(Boolean)
+  )];
+
+  const categoriesCreated = [];
+  for (const name of uniqueCategoryNames) {
+    const lowerName = name.toLowerCase();
+    const aliased = CATEGORY_ALIASES[lowerName];
+    const lookupKey = aliased ? aliased.toLowerCase() : lowerName;
+
+    if (!categoryMap[lookupKey]) {
+      // Auto-create as wallet-scoped custom category
+      const [created] = await sql`
+        INSERT INTO categories (name, wallet_id, created_by_user_id)
+        VALUES (${name}, ${walletId}, ${authUserId})
+        RETURNING id, name
+      `;
+      categoryMap[created.name.toLowerCase()] = created.id;
+      categoriesCreated.push(created.name);
+    }
+  }
+
   const errors = [];
   let imported = 0;
   let skipped = 0;
@@ -98,7 +121,7 @@ export async function handleImport(sql, walletId, body, authUserId) {
     const rawType = String(t.type || '').toLowerCase();
     const txType = rawType === 'income' ? 'income' : 'expense';
 
-    // Category — resolve by name with alias support
+    // Category — resolve by name with alias support (all should exist now)
     let categoryId = null;
     if (t.categoryName) {
       const lowerName = t.categoryName.toLowerCase();
@@ -132,6 +155,7 @@ export async function handleImport(sql, walletId, body, authUserId) {
       imported,
       skipped,
       total: transactions.length,
+      categoriesCreated: categoriesCreated.length > 0 ? categoriesCreated : undefined,
       errors: errors.length > 0 ? errors : undefined,
     },
   };

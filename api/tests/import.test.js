@@ -131,23 +131,51 @@ describe('handleImport', () => {
     expect(inserts[1].values).toContain(5);
   });
 
-  it('sets categoryId to null for unmatched categories', async () => {
+  it('auto-creates missing categories as wallet-scoped', async () => {
     const sql = createMockSql([
       walletAccess('editor'),
       currencyLookup([{ id: 1, code: 'IDR' }]),
       categoryLookup([]),
+      { match: 'INSERT INTO categories', result: [{ id: 99, name: 'Gunpla' }] },
       { match: 'INSERT INTO transactions', result: [] },
     ]);
 
     const result = await handleImport(sql, 1, {
       transactions: [
-        { date: '2026-03-04', amount: 100, currencyCode: 'IDR', categoryName: 'UnknownCat' },
+        { date: '2026-03-04', amount: 100, currencyCode: 'IDR', categoryName: 'Gunpla' },
       ],
     }, 1);
 
     expect(result.body.imported).toBe(1);
-    const insertCall = sql.callsTo('INSERT INTO transactions')[0];
-    expect(insertCall.values).toContain(null); // categoryId is null
+    expect(result.body.categoriesCreated).toEqual(['Gunpla']);
+    // Verify category was inserted as wallet-scoped
+    const catInsert = sql.callsTo('INSERT INTO categories')[0];
+    expect(catInsert.query).toContain('wallet_id');
+    // Transaction should use the newly created category id
+    const txInsert = sql.callsTo('INSERT INTO transactions')[0];
+    expect(txInsert.values).toContain(99);
+  });
+
+  it('does not duplicate auto-created categories across rows', async () => {
+    const sql = createMockSql([
+      walletAccess('editor'),
+      currencyLookup([{ id: 1, code: 'IDR' }]),
+      categoryLookup([]),
+      { match: 'INSERT INTO categories', result: [{ id: 99, name: 'Gunpla' }] },
+      { match: 'INSERT INTO transactions', result: [] },
+    ]);
+
+    const result = await handleImport(sql, 1, {
+      transactions: [
+        { date: '2026-03-04', amount: 100, currencyCode: 'IDR', categoryName: 'Gunpla' },
+        { date: '2026-03-05', amount: 200, currencyCode: 'IDR', categoryName: 'Gunpla' },
+      ],
+    }, 1);
+
+    expect(result.body.imported).toBe(2);
+    // Category should only be created once
+    expect(sql.callsTo('INSERT INTO categories')).toHaveLength(1);
+    expect(result.body.categoriesCreated).toEqual(['Gunpla']);
   });
 
   it('skips rows with invalid currency', async () => {
