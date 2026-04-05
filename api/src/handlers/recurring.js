@@ -125,6 +125,7 @@ export async function handleGetRecurring(sql, walletId, authUserId) {
     JOIN users u ON r.created_by_user_id = u.id
     WHERE r.wallet_id = ${walletId}
     ORDER BY r.next_due_date ASC
+    LIMIT 200
   `;
 
   return {

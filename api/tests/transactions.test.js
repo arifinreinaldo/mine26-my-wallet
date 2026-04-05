@@ -175,9 +175,71 @@ describe('handleGetTransactions', () => {
     const params = new URLSearchParams();
     const result = await handleGetTransactions(sql, 1, params, 1);
     expect(result.body.success).toBe(true);
+    expect(result.body.page).toBe(1);
+    expect(result.body.limit).toBe(50);
+    expect(result.body.hasMore).toBe(false);
     expect(result.body.transactions).toHaveLength(1);
     expect(result.body.transactions[0].amount).toBe(10);
     expect(result.body.transactions[0].type).toBe('expense');
+  });
+
+  it('paginates with page and limit params', async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => ({
+      id: i + 1, date: '2025-01-01', description: `Tx ${i}`, amount: '10',
+      type: 'expense', currency: 'SGD', currency_symbol: 'S$',
+      category: null, category_id: null, payment_method: null,
+      notes: null, created_by_id: 1, created_by_name: 'J', created_at: '2025-01-01',
+    }));
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      // limit+1 = 3 rows returned → hasMore=true
+      { match: 'FROM transactions', result: rows.slice(0, 3) },
+    ]);
+    const params = new URLSearchParams({ limit: '2', page: '1' });
+    const result = await handleGetTransactions(sql, 1, params, 1);
+    expect(result.body.page).toBe(1);
+    expect(result.body.limit).toBe(2);
+    expect(result.body.hasMore).toBe(true);
+    expect(result.body.transactions).toHaveLength(2);
+  });
+
+  it('returns hasMore=false on last page', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      // Only 1 row (less than limit+1) → hasMore=false
+      { match: 'FROM transactions', result: [{
+        id: 5, date: '2025-01-05', description: 'Last', amount: '10',
+        type: 'expense', currency: 'SGD', currency_symbol: 'S$',
+        category: null, category_id: null, payment_method: null,
+        notes: null, created_by_id: 1, created_by_name: 'J', created_at: '2025-01-05',
+      }] },
+    ]);
+    const params = new URLSearchParams({ limit: '2', page: '3' });
+    const result = await handleGetTransactions(sql, 1, params, 1);
+    expect(result.body.page).toBe(3);
+    expect(result.body.hasMore).toBe(false);
+    expect(result.body.transactions).toHaveLength(1);
+  });
+
+  it('caps limit at 200', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'FROM transactions', result: [] },
+    ]);
+    const params = new URLSearchParams({ limit: '999' });
+    const result = await handleGetTransactions(sql, 1, params, 1);
+    expect(result.body.limit).toBe(200);
+  });
+
+  it('defaults page to 1 and limit to 50', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'FROM transactions', result: [] },
+    ]);
+    const params = new URLSearchParams();
+    const result = await handleGetTransactions(sql, 1, params, 1);
+    expect(result.body.page).toBe(1);
+    expect(result.body.limit).toBe(50);
   });
 
   it('passes q parameter as ILIKE filter on description and notes', async () => {

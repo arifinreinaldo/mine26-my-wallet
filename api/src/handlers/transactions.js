@@ -208,6 +208,9 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
   const categoryId = searchParams.get('categoryId');
   const type = searchParams.get('type');
   const q = searchParams.get('q');
+  const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+  const page = Math.max(parseInt(searchParams.get('page')) || 1, 1);
+  const offset = (page - 1) * limit;
 
   const transactions = await sql`
     SELECT
@@ -238,13 +241,20 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
       AND (${type} IS NULL OR t.type = ${type})
       AND (${q} IS NULL OR t.description ILIKE '%' || ${q} || '%' OR t.notes ILIKE '%' || ${q} || '%')
     ORDER BY t.date DESC, t.created_at DESC
+    LIMIT ${limit + 1} OFFSET ${offset}
   `;
+
+  const hasMore = transactions.length > limit;
+  const results = (hasMore ? transactions.slice(0, limit) : transactions);
 
   return {
     body: {
       success: true,
       walletId: parseInt(walletId),
-      transactions: transactions.map((t) => ({
+      page,
+      limit,
+      hasMore,
+      transactions: results.map((t) => ({
         id: t.id,
         date: t.date,
         description: t.description,

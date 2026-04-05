@@ -38,6 +38,7 @@ export async function handleExportCsv(sql, walletId, searchParams, authUserId) {
       AND (${fromDate}::date IS NULL OR t.date >= ${fromDate}::date)
       AND (${toDate}::date IS NULL OR t.date <= ${toDate}::date)
     ORDER BY t.date DESC, t.created_at DESC
+    LIMIT 10000
   `;
 
   // Build CSV
