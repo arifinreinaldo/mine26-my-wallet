@@ -470,6 +470,27 @@
 					}
 				},
 				{
+					"name": "List Transactions",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "transactions"],
+							"query": [
+								{ "key": "from", "value": "2025-01-01", "disabled": true },
+								{ "key": "to", "value": "2025-12-31", "disabled": true },
+								{ "key": "createdBy", "value": "1", "disabled": true },
+								{ "key": "categoryId", "value": "1", "disabled": true },
+								{ "key": "type", "value": "expense", "disabled": true },
+								{ "key": "q", "value": "lunch", "description": "Free-text search on description and notes", "disabled": true },
+								{ "key": "page", "value": "1", "description": "Page number (default 1)", "disabled": true },
+								{ "key": "limit", "value": "50", "description": "Results per page (default 50, max 200)", "disabled": true }
+							]
+						}
+					}
+				},
+				{
 					"name": "Edit Transaction",
 					"request": {
 						"method": "PUT",
@@ -495,24 +516,6 @@
 							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions/{{transactionId}}",
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "wallets", "{{walletId}}", "transactions", "{{transactionId}}"]
-						}
-					}
-				},
-				{
-					"name": "List Transactions",
-					"request": {
-						"method": "GET",
-						"url": {
-							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/transactions",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "wallets", "{{walletId}}", "transactions"],
-							"query": [
-								{ "key": "from", "value": "2025-01-01", "disabled": true },
-								{ "key": "to", "value": "2025-12-31", "disabled": true },
-								{ "key": "createdBy", "value": "1", "disabled": true },
-								{ "key": "categoryId", "value": "1", "disabled": true },
-								{ "key": "type", "value": "expense", "disabled": true }
-							]
 						}
 					}
 				}
@@ -564,6 +567,23 @@
 			]
 		},
 		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Get Wallet Dashboard",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/dashboard",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "dashboard"]
+						},
+						"description": "Single-call wallet summary: today/week/month spending, income, top categories, recent transactions, current balance. All amounts converted to wallet default currency."
+					}
+				}
+			]
+		},
+		{
 			"name": "Reports",
 			"item": [
 				{
@@ -571,15 +591,18 @@
 					"request": {
 						"method": "GET",
 						"url": {
-							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/reports/spending?currency=SGD&from=2025-01-01&to=2025-12-31",
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/reports/spending?currency=SGD",
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "wallets", "{{walletId}}", "reports", "spending"],
 							"query": [
-								{ "key": "currency", "value": "SGD" },
-								{ "key": "from", "value": "2025-01-01" },
-								{ "key": "to", "value": "2025-12-31" }
+								{ "key": "currency", "value": "SGD", "description": "Target currency for conversion (default SGD)" },
+								{ "key": "from", "value": "2025-01-01", "disabled": true },
+								{ "key": "to", "value": "2025-12-31", "disabled": true },
+								{ "key": "page", "value": "1", "description": "Page number for transaction list (default 1)", "disabled": true },
+								{ "key": "limit", "value": "50", "description": "Results per page (default 50, max 200). Summary always covers all data.", "disabled": true }
 							]
-						}
+						},
+						"description": "Summary (income/expense/category/monthly/user totals) always covers ALL matching transactions. Transaction detail list is paginated."
 					}
 				}
 			]
@@ -592,7 +615,7 @@
 					"request": {
 						"method": "GET",
 						"url": {
-							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/export/csv?from=2025-01-01&to=2025-12-31",
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/export/csv",
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "wallets", "{{walletId}}", "export", "csv"],
 							"query": [
@@ -600,6 +623,49 @@
 								{ "key": "to", "value": "2025-12-31", "disabled": true }
 							]
 						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Import",
+			"item": [
+				{
+					"name": "Bulk Import Transactions",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/import",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "import"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transactions\": [\n    {\n      \"date\": \"2026-03-04T05:00:00Z\",\n      \"type\": \"Expense\",\n      \"categoryName\": \"Food & Drink\",\n      \"amount\": -72770.54,\n      \"currencyCode\": \"IDR\",\n      \"description\": \"Lei cha\"\n    },\n    {\n      \"date\": \"2026-03-05T08:00:00Z\",\n      \"type\": \"Income\",\n      \"categoryName\": \"Gunpla\",\n      \"amount\": 1023854.4,\n      \"currencyCode\": \"IDR\",\n      \"description\": \"Eternal star glory stargazer\"\n    }\n  ]\n}"
+						},
+						"description": "Bulk import from Spendee or similar. Negative amounts auto-converted to positive. Unknown categories auto-created as wallet-scoped. Spendee aliases: 'Food & Drink' → 'Food & Dining', 'Utilities' → 'Bills & Utilities'. Max 1000 per batch."
+					}
+				},
+				{
+					"name": "Bulk Import (Spendee Full Batch)",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/wallets/{{walletId}}/import",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallets", "{{walletId}}", "import"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transactions\": [\n    { \"date\": \"2026-03-04T05:00:00Z\", \"type\": \"Expense\", \"categoryName\": \"Food & Drink\", \"amount\": -72770.54, \"currencyCode\": \"IDR\", \"description\": \"Lei cha\" },\n    { \"date\": \"2026-03-04T10:00:00Z\", \"type\": \"Expense\", \"categoryName\": \"Shopping\", \"amount\": -13208, \"currencyCode\": \"IDR\", \"description\": \"Lapisan roda\" },\n    { \"date\": \"2026-03-05T08:00:00Z\", \"type\": \"Income\", \"categoryName\": \"Gunpla\", \"amount\": 1023854.4, \"currencyCode\": \"IDR\", \"description\": \"Eternal star glory stargazer\" },\n    { \"date\": \"2026-03-07T07:00:00Z\", \"type\": \"Expense\", \"categoryName\": \"Healthcare\", \"amount\": -1953240, \"currencyCode\": \"IDR\", \"description\": \"Asuransi\" },\n    { \"date\": \"2026-03-09T10:00:00Z\", \"type\": \"Income\", \"categoryName\": \"Extra income\", \"amount\": 164925, \"currencyCode\": \"IDR\", \"description\": \"Harry Potter card\" },\n    { \"date\": \"2026-03-17T04:00:00Z\", \"type\": \"Expense\", \"categoryName\": \"Accommodation\", \"amount\": -1991400, \"currencyCode\": \"IDR\", \"description\": \"Socia onl mayo\" },\n    { \"date\": \"2026-03-17T10:00:00Z\", \"type\": \"Expense\", \"categoryName\": \"Utilities\", \"amount\": -82000, \"currencyCode\": \"IDR\", \"description\": \"Internet and pulsa mami 195\" }\n  ]\n}"
+						},
+						"description": "Example batch matching real Spendee export data with mixed categories, income/expense types, and IDR currency."
 					}
 				}
 			]
