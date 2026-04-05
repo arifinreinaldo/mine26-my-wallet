@@ -233,7 +233,8 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "rates", "fetch"]
 						}
-					}
+					},
+					"description": "Fetches direct rates for SGD, IDR, PHP from exchangerate-api.com (v6 with API key). Generates 6 pair recommendations: SGD↔IDR, SGD↔PHP, IDR↔PHP."
 				},
 				{
 					"name": "Get Recommendations",
@@ -251,12 +252,12 @@
 					"request": {
 						"method": "GET",
 						"url": {
-							"raw": "{{baseUrl}}/api/rates/current?from=USD&to=SGD",
+							"raw": "{{baseUrl}}/api/rates/current?from=SGD&to=IDR",
 							"host": ["{{baseUrl}}"],
 							"path": ["api", "rates", "current"],
 							"query": [
-								{ "key": "from", "value": "USD" },
-								{ "key": "to", "value": "SGD" }
+								{ "key": "from", "value": "SGD" },
+								{ "key": "to", "value": "IDR" }
 							]
 						}
 					}
@@ -275,7 +276,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"fromCurrency\": \"USD\",\n  \"toCurrency\": \"SGD\",\n  \"rate\": 1.35,\n  \"notes\": \"Bank rate\"\n}"
+							"raw": "{\n  \"fromCurrency\": \"SGD\",\n  \"toCurrency\": \"IDR\",\n  \"rate\": 13210.03,\n  \"notes\": \"Bank rate\"\n}"
 						}
 					}
 				},

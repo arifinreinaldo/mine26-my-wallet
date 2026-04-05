@@ -238,8 +238,8 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
       AND (${toDate}::date IS NULL OR t.date <= ${toDate}::date)
       AND (${createdBy}::integer IS NULL OR t.created_by_user_id = ${createdBy}::integer)
       AND (${categoryId}::integer IS NULL OR t.category_id = ${categoryId}::integer)
-      AND (${type} IS NULL OR t.type = ${type})
-      AND (${q} IS NULL OR t.description ILIKE '%' || ${q} || '%' OR t.notes ILIKE '%' || ${q} || '%')
+      AND (${type}::text IS NULL OR t.type = ${type}::text)
+      AND (${q}::text IS NULL OR t.description ILIKE '%' || ${q}::text || '%' OR t.notes ILIKE '%' || ${q}::text || '%')
     ORDER BY t.date DESC, t.created_at DESC
     LIMIT ${limit + 1} OFFSET ${offset}
   `;

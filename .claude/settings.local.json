@@ -5,7 +5,9 @@
       "Bash(chmod:*)",
       "Bash(git push:*)",
       "Bash(npm test:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(curl -s \"https://v6.exchangerate-api.com/v6/c3a106b7b26f35879a0ddbfd/latest/SGD\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\); print\\({k:d.get\\('conversion_rates',{}\\).get\\(k\\) for k in ['IDR','PHP','SGD']}\\)\")"
     ]
   }
 }

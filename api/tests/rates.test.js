@@ -13,29 +13,42 @@ beforeEach(() => {
 });
 
 describe('handleFetchRates', () => {
+  it('skips fetch if rates already fetched today', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '6' }] },
+    ]);
+
+    const result = await handleFetchRates(sql, { EXCHANGE_RATE_API_KEY: 'test-key' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.message).toContain('already fetched today');
+    expect(result.body.rates).toHaveLength(0);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('fetches direct rates for all 6 currency pairs', async () => {
     global.fetch.mockImplementation((url) => {
       if (url.includes('/SGD')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
+          json: () => Promise.resolve({ conversion_rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
         });
       }
       if (url.includes('/IDR')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ rates: { SGD: 0.0000855, IDR: 1, PHP: 0.00363 } }),
+          json: () => Promise.resolve({ conversion_rates: { SGD: 0.0000855, IDR: 1, PHP: 0.00363 } }),
         });
       }
       if (url.includes('/PHP')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ rates: { SGD: 0.0235, IDR: 275.3, PHP: 1 } }),
+          json: () => Promise.resolve({ conversion_rates: { SGD: 0.0235, IDR: 275.3, PHP: 1 } }),
         });
       }
     });
 
     const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '0' }] },
       { match: 'SELECT id, code FROM currencies', result: [
         { id: 1, code: 'SGD' },
         { id: 2, code: 'IDR' },
@@ -58,7 +71,7 @@ describe('handleFetchRates', () => {
       if (url.includes('/SGD')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
+          json: () => Promise.resolve({ conversion_rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
         });
       }
       // IDR and PHP calls fail
@@ -66,6 +79,7 @@ describe('handleFetchRates', () => {
     });
 
     const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '0' }] },
       { match: 'SELECT id, code FROM currencies', result: [
         { id: 1, code: 'SGD' },
         { id: 2, code: 'IDR' },
@@ -82,10 +96,11 @@ describe('handleFetchRates', () => {
   it('skips currencies not in DB', async () => {
     global.fetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
+      json: () => Promise.resolve({ conversion_rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
     });
 
     const sql = createMockSql([
+      { match: 'SELECT COUNT', result: [{ count: '0' }] },
       { match: 'SELECT id, code FROM currencies', result: [
         { id: 1, code: 'SGD' },
         // IDR and PHP missing from DB

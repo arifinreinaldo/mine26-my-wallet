@@ -5,6 +5,24 @@ const TARGET_CURRENCIES = ['SGD', 'IDR', 'PHP'];
 
 export async function handleFetchRates(sql, env) {
   const source = 'exchangerate-api.com';
+
+  // Check if rates were already fetched today
+  const [alreadyFetched] = await sql`
+    SELECT COUNT(*) AS count FROM exchange_rate_recommendations
+    WHERE fetched_at::date = CURRENT_DATE
+      AND source = ${source}
+  `;
+
+  if (parseInt(alreadyFetched.count) > 0) {
+    return {
+      body: {
+        success: true,
+        message: 'Rates already fetched today, skipping',
+        rates: [],
+      },
+    };
+  }
+
   const savedRates = [];
 
   const currencies = await sql`
@@ -24,12 +42,13 @@ export async function handleFetchRates(sql, env) {
     }
     const data = await response.json();
     const baseId = currencyMap[baseCode];
+    const conversionRates = data.conversion_rates || {};
 
     for (const targetCode of TARGET_CURRENCIES) {
       if (targetCode === baseCode) continue;
 
       const targetId = currencyMap[targetCode];
-      const rate = data.rates[targetCode];
+      const rate = conversionRates[targetCode];
       if (!baseId || !targetId || !rate) continue;
 
       await sql`
