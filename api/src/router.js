@@ -44,6 +44,7 @@ import {
 } from './handlers/recurring.js';
 
 import { handleExportCsv } from './handlers/export.js';
+import { handleImport } from './handlers/import.js';
 
 import {
   handlePushSync,
@@ -134,6 +135,9 @@ const protectedRoutes = [
 
   // Export (wallet-scoped)
   { method: 'GET', path: '/api/wallets/:walletId/export/csv', handler: (sql, params, url, _b, _e, user) => handleExportCsv(sql, params.walletId, url.searchParams, user.userId) },
+
+  // Import (wallet-scoped)
+  { method: 'POST', path: '/api/wallets/:walletId/import', handler: (sql, params, _u, body, _e, user) => handleImport(sql, params.walletId, body, user.userId) },
 
   // Sync (wallet-scoped)
   { method: 'POST', path: '/api/wallets/:walletId/sync', handler: (sql, params, _u, body, _e, user) => handlePushSync(sql, params.walletId, body, user.userId) },
