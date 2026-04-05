@@ -29,6 +29,7 @@ import {
 } from './handlers/transactions.js';
 
 import { handleGetSpendingReport } from './handlers/reports.js';
+import { handleGetDashboard } from './handlers/dashboard.js';
 
 import {
   handleGetCategories,
@@ -132,6 +133,9 @@ const protectedRoutes = [
 
   // Reports (wallet-scoped)
   { method: 'GET', path: '/api/wallets/:walletId/reports/spending', handler: (sql, params, url, _b, _e, user) => handleGetSpendingReport(sql, params.walletId, url.searchParams, user.userId) },
+
+  // Dashboard (wallet-scoped)
+  { method: 'GET', path: '/api/wallets/:walletId/dashboard', handler: (sql, params, _u, _b, _e, user) => handleGetDashboard(sql, params.walletId, user.userId) },
 
   // Export (wallet-scoped)
   { method: 'GET', path: '/api/wallets/:walletId/export/csv', handler: (sql, params, url, _b, _e, user) => handleExportCsv(sql, params.walletId, url.searchParams, user.userId) },

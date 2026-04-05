@@ -207,6 +207,7 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
   const createdBy = searchParams.get('createdBy');
   const categoryId = searchParams.get('categoryId');
   const type = searchParams.get('type');
+  const q = searchParams.get('q');
 
   const transactions = await sql`
     SELECT
@@ -235,6 +236,7 @@ export async function handleGetTransactions(sql, walletId, searchParams, authUse
       AND (${createdBy}::integer IS NULL OR t.created_by_user_id = ${createdBy}::integer)
       AND (${categoryId}::integer IS NULL OR t.category_id = ${categoryId}::integer)
       AND (${type} IS NULL OR t.type = ${type})
+      AND (${q} IS NULL OR t.description ILIKE '%' || ${q} || '%' OR t.notes ILIKE '%' || ${q} || '%')
     ORDER BY t.date DESC, t.created_at DESC
   `;
 

@@ -179,4 +179,44 @@ describe('handleGetTransactions', () => {
     expect(result.body.transactions[0].amount).toBe(10);
     expect(result.body.transactions[0].type).toBe('expense');
   });
+
+  it('passes q parameter as ILIKE filter on description and notes', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'FROM transactions', result: [] },
+    ]);
+    const params = new URLSearchParams({ q: 'lunch' });
+    await handleGetTransactions(sql, 1, params, 1);
+    const selectCall = sql.calls.find(c => c.query.includes('FROM transactions'));
+    expect(selectCall.query).toContain('ILIKE');
+    expect(selectCall.values).toContain('lunch');
+  });
+
+  it('search combines with other filters', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'FROM transactions', result: [] },
+    ]);
+    const params = new URLSearchParams({ q: 'coffee', type: 'expense', from: '2025-01-01' });
+    await handleGetTransactions(sql, 1, params, 1);
+    const selectCall = sql.calls.find(c => c.query.includes('FROM transactions'));
+    // All filters present in query
+    expect(selectCall.query).toContain('ILIKE');
+    expect(selectCall.query).toContain('t.type');
+    expect(selectCall.query).toContain('t.date >=');
+    expect(selectCall.values).toContain('coffee');
+  });
+
+  it('null q skips search filter', async () => {
+    const sql = createMockSql([
+      walletAccess('viewer'),
+      { match: 'FROM transactions', result: [] },
+    ]);
+    const params = new URLSearchParams(); // no q param
+    await handleGetTransactions(sql, 1, params, 1);
+    const selectCall = sql.calls.find(c => c.query.includes('FROM transactions'));
+    // ILIKE clause is in the query but q is null so it's bypassed
+    expect(selectCall.query).toContain('ILIKE');
+    expect(selectCall.values).toContain(null); // q is null
+  });
 });
