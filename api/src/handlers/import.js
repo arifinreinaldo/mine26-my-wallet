@@ -74,13 +74,14 @@ export async function handleImport(sql, walletId, body, authUserId) {
     const lookupKey = aliased ? aliased.toLowerCase() : lowerName;
 
     if (!categoryMap[lookupKey]) {
-      // Auto-create as wallet-scoped custom category
+      // Use the canonical (aliased) name if available, otherwise the original
+      const displayName = aliased || name;
       const [created] = await sql`
         INSERT INTO categories (name, wallet_id, created_by_user_id)
-        VALUES (${name}, ${walletId}, ${authUserId})
+        VALUES (${displayName}, ${walletId}, ${authUserId})
         RETURNING id, name
       `;
-      categoryMap[created.name.toLowerCase()] = created.id;
+      categoryMap[lookupKey] = created.id;
       categoriesCreated.push(created.name);
     }
   }

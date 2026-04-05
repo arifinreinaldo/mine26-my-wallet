@@ -156,6 +156,29 @@ describe('handleImport', () => {
     expect(txInsert.values).toContain(99);
   });
 
+  it('auto-creates aliased category with canonical name when target missing', async () => {
+    const sql = createMockSql([
+      walletAccess('editor'),
+      currencyLookup([{ id: 1, code: 'IDR' }]),
+      categoryLookup([]), // "Food & Dining" does NOT exist in DB
+      { match: 'INSERT INTO categories', result: [{ id: 50, name: 'Food & Dining' }] },
+      { match: 'INSERT INTO transactions', result: [] },
+    ]);
+
+    const result = await handleImport(sql, 1, {
+      transactions: [
+        { date: '2026-03-04', amount: 100, currencyCode: 'IDR', categoryName: 'Food & Drink' },
+      ],
+    }, 1);
+
+    expect(result.body.imported).toBe(1);
+    // Should create "Food & Dining" (canonical), not "Food & Drink" (Spendee name)
+    expect(result.body.categoriesCreated).toEqual(['Food & Dining']);
+    // Transaction should use the created category id
+    const txInsert = sql.callsTo('INSERT INTO transactions')[0];
+    expect(txInsert.values).toContain(50);
+  });
+
   it('does not duplicate auto-created categories across rows', async () => {
     const sql = createMockSql([
       walletAccess('editor'),
