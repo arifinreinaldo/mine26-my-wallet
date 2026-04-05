@@ -168,6 +168,26 @@
 							"raw": "{\n  \"username\": \"johndoe\",\n  \"otp\": \"123456\"\n}"
 						}
 					}
+				},
+				{
+					"name": "Resend OTP",
+					"request": {
+						"auth": { "type": "noauth" },
+						"method": "POST",
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/resend-otp",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "resend-otp"]
+						},
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"johndoe\",\n  \"purpose\": \"login\"\n}"
+						}
+					},
+					"description": "Resend OTP with 60-second cooldown. Invalidates previous unused OTPs. Purpose must be 'login' or 'register'."
 				}
 			]
 		},

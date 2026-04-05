@@ -52,7 +52,7 @@ export default {
   async scheduled(event, env) {
     const sql = neon(env.DATABASE_URL);
     try {
-      await handleFetchRates(sql);
+      await handleFetchRates(sql, env);
       console.log('Scheduled rate fetch completed');
     } catch (error) {
       console.error('Scheduled rate fetch failed:', error);

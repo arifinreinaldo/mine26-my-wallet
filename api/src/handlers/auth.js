@@ -57,6 +57,92 @@ async function incrementOtpAttempts(sql, username, purpose) {
   `;
 }
 
+const OTP_COOLDOWN_SECONDS = 60;
+
+export async function handleResendOtp(sql, body) {
+  const { username, purpose } = body;
+
+  if (!username || !purpose) {
+    return {
+      status: 400,
+      body: { success: false, message: 'username and purpose are required' },
+    };
+  }
+
+  if (purpose !== 'login' && purpose !== 'register') {
+    return {
+      status: 400,
+      body: { success: false, message: 'purpose must be "login" or "register"' },
+    };
+  }
+
+  // Check user exists
+  const [user] = await sql`
+    SELECT id, verified FROM users WHERE username = ${username}
+  `;
+
+  if (!user) {
+    return {
+      status: 404,
+      body: { success: false, message: 'User not found' },
+    };
+  }
+
+  if (purpose === 'login' && !user.verified) {
+    return {
+      status: 403,
+      body: { success: false, message: 'User is not verified' },
+    };
+  }
+
+  if (purpose === 'register' && user.verified) {
+    return {
+      status: 400,
+      body: { success: false, message: 'User is already verified' },
+    };
+  }
+
+  // Check cooldown — was an OTP sent within the last N seconds?
+  const [recent] = await sql`
+    SELECT id, created_at FROM otp_codes
+    WHERE username = ${username}
+      AND purpose = ${purpose}
+      AND created_at > NOW() - MAKE_INTERVAL(secs => ${OTP_COOLDOWN_SECONDS})
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+
+  if (recent) {
+    return {
+      status: 429,
+      body: { success: false, message: `Please wait ${OTP_COOLDOWN_SECONDS} seconds before requesting a new OTP` },
+    };
+  }
+
+  // Invalidate all existing unused OTPs for this username/purpose
+  await sql`
+    UPDATE otp_codes SET used = true
+    WHERE username = ${username}
+      AND purpose = ${purpose}
+      AND used = false
+  `;
+
+  // Generate and send new OTP
+  const otp = generateOtp();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+  await sql`
+    INSERT INTO otp_codes (username, code, purpose, expires_at)
+    VALUES (${username}, ${otp}, ${purpose}, ${expiresAt})
+  `;
+
+  await sendOtpViaNtfy(username, otp);
+
+  return {
+    body: { success: true, message: 'New OTP sent' },
+  };
+}
+
 export async function handleCheckUsername(sql, username) {
   if (!username) {
     return {

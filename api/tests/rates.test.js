@@ -13,61 +13,88 @@ beforeEach(() => {
 });
 
 describe('handleFetchRates', () => {
-  it('saves recommendations for each currency pair', async () => {
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        rates: { SGD: 1.35, EUR: 0.92, USD: 1.0 },
-      }),
+  it('fetches direct rates for all 6 currency pairs', async () => {
+    global.fetch.mockImplementation((url) => {
+      if (url.includes('/SGD')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
+        });
+      }
+      if (url.includes('/IDR')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ rates: { SGD: 0.0000855, IDR: 1, PHP: 0.00363 } }),
+        });
+      }
+      if (url.includes('/PHP')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ rates: { SGD: 0.0235, IDR: 275.3, PHP: 1 } }),
+        });
+      }
     });
 
     const sql = createMockSql([
       { match: 'SELECT id, code FROM currencies', result: [
-        { id: 1, code: 'USD' },
-        { id: 2, code: 'SGD' },
-        { id: 3, code: 'EUR' },
+        { id: 1, code: 'SGD' },
+        { id: 2, code: 'IDR' },
+        { id: 3, code: 'PHP' },
       ] },
       { match: 'INSERT INTO exchange_rate_recommendations', result: [] },
     ]);
 
-    const result = await handleFetchRates(sql);
+    const result = await handleFetchRates(sql, { EXCHANGE_RATE_API_KEY: 'test-key' });
     expect(result.body.success).toBe(true);
-    expect(result.body.rates).toHaveLength(2); // SGD + EUR (USD skipped)
-    expect(result.body.rates[0].pair).toBe('USD/SGD');
-    expect(result.body.rates[0].rate).toBe(1.35);
-    // Verify INSERT called for each pair
-    expect(sql.callsTo('INSERT INTO exchange_rate_recommendations')).toHaveLength(2);
+    expect(result.body.rates).toHaveLength(6);
+    expect(result.body.rates[0].pair).toBe('SGD/IDR');
+    expect(result.body.rates[0].rate).toBe(11700);
+    expect(result.body.rates[1].pair).toBe('SGD/PHP');
+    expect(sql.callsTo('INSERT INTO exchange_rate_recommendations')).toHaveLength(6);
   });
 
-  it('throws on API failure', async () => {
-    global.fetch.mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: 'Service Unavailable',
+  it('continues when one currency API call fails', async () => {
+    global.fetch.mockImplementation((url) => {
+      if (url.includes('/SGD')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
+        });
+      }
+      // IDR and PHP calls fail
+      return Promise.resolve({ ok: false, status: 503 });
     });
 
-    const sql = createMockSql([]);
-    await expect(handleFetchRates(sql)).rejects.toThrow('Failed to fetch rates');
+    const sql = createMockSql([
+      { match: 'SELECT id, code FROM currencies', result: [
+        { id: 1, code: 'SGD' },
+        { id: 2, code: 'IDR' },
+        { id: 3, code: 'PHP' },
+      ] },
+      { match: 'INSERT INTO exchange_rate_recommendations', result: [] },
+    ]);
+
+    const result = await handleFetchRates(sql, { EXCHANGE_RATE_API_KEY: 'test-key' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.rates).toHaveLength(2); // Only SGD→IDR and SGD→PHP
   });
 
   it('skips currencies not in DB', async () => {
     global.fetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        rates: { SGD: 1.35, XYZ: 99.0 },
-      }),
+      json: () => Promise.resolve({ rates: { SGD: 1, IDR: 11700, PHP: 42.5 } }),
     });
 
     const sql = createMockSql([
       { match: 'SELECT id, code FROM currencies', result: [
-        { id: 1, code: 'USD' },
-        { id: 2, code: 'SGD' },
+        { id: 1, code: 'SGD' },
+        // IDR and PHP missing from DB
       ] },
       { match: 'INSERT INTO exchange_rate_recommendations', result: [] },
     ]);
 
-    const result = await handleFetchRates(sql);
-    expect(result.body.rates).toHaveLength(1); // Only SGD, XYZ skipped
+    const result = await handleFetchRates(sql, { EXCHANGE_RATE_API_KEY: 'test-key' });
+    expect(result.body.rates).toHaveLength(0);
   });
 });
 

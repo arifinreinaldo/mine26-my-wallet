@@ -1,44 +1,50 @@
 /**
  * Fetch current exchange rates from API and save as recommendations
  */
-export async function handleFetchRates(sql) {
-  const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
-  if (!response.ok) {
-    throw new Error(`Failed to fetch rates: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  const rates = data.rates;
+const TARGET_CURRENCIES = ['SGD', 'IDR', 'PHP'];
+
+export async function handleFetchRates(sql, env) {
   const source = 'exchangerate-api.com';
+  const savedRates = [];
 
   const currencies = await sql`
     SELECT id, code FROM currencies
-    WHERE code = ANY(ARRAY['USD', 'SGD', 'EUR', 'MYR', 'GBP', 'JPY'])
+    WHERE code = ANY(${TARGET_CURRENCIES})
   `;
-
   const currencyMap = Object.fromEntries(
     currencies.map((c) => [c.code, c.id])
   );
 
-  const baseId = currencyMap['USD'];
-  const savedRates = [];
+  // Fetch direct rates from each base currency
+  for (const baseCode of TARGET_CURRENCIES) {
+    const response = await fetch(`https://v6.exchangerate-api.com/v6/${env.EXCHANGE_RATE_API_KEY}/latest/${baseCode}`);
+    if (!response.ok) {
+      console.error(`Failed to fetch rates for ${baseCode}: ${response.status}`);
+      continue;
+    }
+    const data = await response.json();
+    const baseId = currencyMap[baseCode];
 
-  for (const [targetCode, rate] of Object.entries(rates)) {
-    if (targetCode === 'USD' || !currencyMap[targetCode]) continue;
+    for (const targetCode of TARGET_CURRENCIES) {
+      if (targetCode === baseCode) continue;
 
-    const targetId = currencyMap[targetCode];
+      const targetId = currencyMap[targetCode];
+      const rate = data.rates[targetCode];
+      if (!baseId || !targetId || !rate) continue;
 
-    await sql`
-      INSERT INTO exchange_rate_recommendations
-      (from_currency_id, to_currency_id, recommended_rate, source, notes)
-      VALUES (${baseId}, ${targetId}, ${rate}, ${source},
-              ${'Auto-fetched from ' + source})
-    `;
+      await sql`
+        INSERT INTO exchange_rate_recommendations
+        (from_currency_id, to_currency_id, recommended_rate, source, notes)
+        VALUES (${baseId}, ${targetId}, ${rate}, ${source},
+                ${'Direct rate from ' + source})
+      `;
 
-    savedRates.push({
-      pair: `USD/${targetCode}`,
-      rate: parseFloat(rate),
-      source,
-    });
+      savedRates.push({
+        pair: `${baseCode}/${targetCode}`,
+        rate: parseFloat(rate),
+        source,
+      });
+    }
   }
 
   return {

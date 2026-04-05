@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:claude.ai)",
       "Bash(chmod:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

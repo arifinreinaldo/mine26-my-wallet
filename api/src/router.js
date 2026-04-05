@@ -58,6 +58,7 @@ import {
   handleVerifyRegistration,
   handleLogin,
   handleVerifyLogin,
+  handleResendOtp,
 } from './handlers/auth.js';
 
 import { verifyJwt } from './helpers/jwt.js';
@@ -90,12 +91,13 @@ const authRoutes = [
   { method: 'POST', path: '/api/auth/verify-registration', handler: (sql, _p, _u, body, env) => handleVerifyRegistration(sql, body, env) },
   { method: 'POST', path: '/api/auth/login', handler: (sql, _p, _u, body) => handleLogin(sql, body) },
   { method: 'POST', path: '/api/auth/verify-login', handler: (sql, _p, _u, body, env) => handleVerifyLogin(sql, body, env) },
+  { method: 'POST', path: '/api/auth/resend-otp', handler: (sql, _p, _u, body) => handleResendOtp(sql, body) },
 ];
 
 // Protected routes (JWT required)
 const protectedRoutes = [
   // Exchange rates
-  { method: 'POST', path: '/api/rates/fetch', handler: (sql) => handleFetchRates(sql) },
+  { method: 'POST', path: '/api/rates/fetch', handler: (sql, _p, _u, _b, env) => handleFetchRates(sql, env) },
   { method: 'GET', path: '/api/rates/recommendations', handler: (sql) => handleGetRecommendations(sql) },
   { method: 'GET', path: '/api/rates/current', handler: (sql, _p, url) => handleGetCurrentRate(sql, url.searchParams.get('from'), url.searchParams.get('to')) },
   { method: 'POST', path: '/api/rates/manual', handler: (sql, _p, _u, body) => handleManualRate(sql, body) },

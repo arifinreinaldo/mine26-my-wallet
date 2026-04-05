@@ -6,6 +6,7 @@ import {
   handleVerifyRegistration,
   handleLogin,
   handleVerifyLogin,
+  handleResendOtp,
 } from '../src/handlers/auth.js';
 
 // Mock global fetch for ntfy.sh calls
@@ -138,6 +139,82 @@ describe('handleVerifyRegistration', () => {
     expect(result.body.success).toBe(true);
     expect(result.body.token).toBeDefined();
     expect(result.body.token.split('.')).toHaveLength(3);
+  });
+});
+
+describe('handleResendOtp', () => {
+  it('returns 400 for missing fields', async () => {
+    const sql = createMockSql([]);
+    const result = await handleResendOtp(sql, { username: 'john' });
+    expect(result.status).toBe(400);
+    expect(result.body.message).toContain('purpose');
+  });
+
+  it('returns 400 for invalid purpose', async () => {
+    const sql = createMockSql([]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'invalid' });
+    expect(result.status).toBe(400);
+    expect(result.body.message).toContain('purpose');
+  });
+
+  it('returns 404 for non-existent user', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [] },
+    ]);
+    const result = await handleResendOtp(sql, { username: 'nobody', purpose: 'login' });
+    expect(result.status).toBe(404);
+  });
+
+  it('returns 403 for unverified user trying login resend', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [{ id: 1, verified: false }] },
+    ]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'login' });
+    expect(result.status).toBe(403);
+  });
+
+  it('returns 400 for already verified user trying register resend', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [{ id: 1, verified: true }] },
+    ]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'register' });
+    expect(result.status).toBe(400);
+    expect(result.body.message).toContain('already verified');
+  });
+
+  it('returns 429 when cooldown is active', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [{ id: 1, verified: true }] },
+      { match: 'SELECT id, created_at FROM otp_codes', result: [{ id: 1, created_at: new Date() }] },
+    ]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'login' });
+    expect(result.status).toBe(429);
+    expect(result.body.message).toContain('wait');
+  });
+
+  it('invalidates old OTPs and sends new one on success', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [{ id: 1, verified: true }] },
+      { match: 'SELECT id, created_at FROM otp_codes', result: [] }, // no cooldown
+      { match: 'UPDATE otp_codes SET used', result: [] }, // invalidate old
+      { match: 'INSERT INTO otp_codes', result: [] }, // new OTP
+    ]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'login' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.message).toBe('New OTP sent');
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('allows register resend for unverified user', async () => {
+    const sql = createMockSql([
+      { match: 'SELECT id, verified FROM users', result: [{ id: 1, verified: false }] },
+      { match: 'SELECT id, created_at FROM otp_codes', result: [] },
+      { match: 'UPDATE otp_codes SET used', result: [] },
+      { match: 'INSERT INTO otp_codes', result: [] },
+    ]);
+    const result = await handleResendOtp(sql, { username: 'john', purpose: 'register' });
+    expect(result.body.success).toBe(true);
+    expect(result.body.message).toBe('New OTP sent');
   });
 });
 
