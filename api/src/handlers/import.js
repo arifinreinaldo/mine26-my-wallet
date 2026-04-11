@@ -79,6 +79,8 @@ export async function handleImport(sql, walletId, body, authUserId) {
       const [created] = await sql`
         INSERT INTO categories (name, wallet_id, created_by_user_id)
         VALUES (${displayName}, ${walletId}, ${authUserId})
+        ON CONFLICT (LOWER(name), wallet_id) WHERE wallet_id IS NOT NULL
+        DO UPDATE SET name = categories.name
         RETURNING id, name
       `;
       categoryMap[lookupKey] = created.id;

@@ -142,9 +142,13 @@ export async function handleEditTransaction(sql, walletId, transactionId, body, 
       payment_method = CASE WHEN ${hasPayment} THEN ${paymentMethod} ELSE payment_method END,
       notes = CASE WHEN ${hasNotes} THEN ${notes} ELSE notes END,
       updated_at = NOW()
-    WHERE id = ${transactionId} AND wallet_id = ${walletId}
+    WHERE id = ${transactionId} AND wallet_id = ${walletId} AND deleted_at IS NULL
     RETURNING id
   `;
+
+  if (!updated) {
+    return { status: 404, body: { success: false, message: 'Transaction not found or was deleted' } };
+  }
 
   return {
     body: { success: true, message: 'Transaction updated', transactionId: updated.id },

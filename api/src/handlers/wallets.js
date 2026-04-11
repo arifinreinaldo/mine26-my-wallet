@@ -83,7 +83,9 @@ export async function handleGetWallets(sql, authUserId) {
     LEFT JOIN users u ON w.created_by_user_id = u.id
     LEFT JOIN (
       SELECT wallet_id, COUNT(*) AS member_count
-      FROM wallet_users GROUP BY wallet_id
+      FROM wallet_users
+      WHERE wallet_id IN (SELECT wallet_id FROM wallet_users WHERE user_id = ${authUserId})
+      GROUP BY wallet_id
     ) mc ON mc.wallet_id = w.id
     ORDER BY w.created_at DESC
   `;

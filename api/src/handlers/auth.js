@@ -8,7 +8,7 @@ function generateOtp() {
 
 async function sendOtpViaNtfy(username, otp) {
   const topic = `my-wallet-${username}`;
-  await fetch(`https://ntfy.sh/${topic}`, {
+  const response = await fetch(`https://ntfy.sh/${topic}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -18,6 +18,9 @@ async function sendOtpViaNtfy(username, otp) {
       tags: ['key'],
     }),
   });
+  if (!response.ok) {
+    throw new Error(`Failed to send OTP notification (status ${response.status})`);
+  }
 }
 
 const MAX_OTP_ATTEMPTS = 5;
