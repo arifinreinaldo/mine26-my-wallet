@@ -8,6 +8,7 @@
 
 ```
 mine26-my-wallet/
+├── wiki/                   # LLM Wiki — AI knowledge base (start with MAP.md)
 ├── api/                    # Cloudflare Worker backend
 │   ├── src/
 │   │   ├── index.js        # Entry point (fetch + scheduled handlers)
@@ -125,3 +126,27 @@ These are configured as Cloudflare Worker secrets (not .env files) and GitHub Ac
 | `api/src/handlers/sync.js` | Offline sync push/pull endpoints |
 | `api/API-DOCS.md` | Complete API reference with examples |
 | `PLAN-neon-cloudflare-worker.md` | Architecture decisions and schema design |
+
+## LLM Wiki
+
+The `wiki/` directory contains a structured knowledge base for AI agents. **Read `wiki/MAP.md` first** — it's a memory palace that gives you full project orientation in 30 seconds.
+
+### Quick Start for AI Agents
+1. **Read [wiki/MAP.md](wiki/MAP.md)** — instant mental model of the entire project
+2. **Read [wiki/common-bug-patterns.md](wiki/common-bug-patterns.md)** — 11 known pitfalls with prevention code
+3. **Read [wiki/api-patterns.md](wiki/api-patterns.md)** — new endpoint checklist before adding routes
+
+### Wiki Structure
+| File | Purpose |
+|---|---|
+| `wiki/MAP.md` | **Start here** — Memory palace: 30-second project orientation |
+| `wiki/index.md` | Full content catalog organized by domain |
+| `wiki/common-bug-patterns.md` | 11 documented pitfalls with prevention code snippets |
+| `wiki/api-patterns.md` | Handler signature, response format, new endpoint checklist |
+| `wiki/SCHEMA.md` | Wiki conventions and maintenance rules |
+
+### Wiki Maintenance
+- After changing business logic, update the relevant wiki page(s)
+- Append changes to `wiki/log.md`
+- Run a mental "lint" — does the wiki still match the code?
+- See `wiki/SCHEMA.md` for full conventions
